@@ -1,0 +1,383 @@
+import { Habit, User, HabitCompletion, Challenge, AppState, LifeChallenge } from '../types';
+import { StorageService } from './storage';
+import { LifeChallengeVerifier } from './lifeChallenges';
+import { LeagueLogic } from './leagueLogic';
+
+export class HabitLogic {
+  // Verificar si un hábito debe completarse hoy
+  static shouldCompleteToday(habit: Habit): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (!habit.isActive) return false;
+
+    switch (habit.frequency.type) {
+      case 'daily':
+        return true;
+      
+      case 'weekly':
+        if (habit.frequency.daysOfWeek) {
+          return habit.frequency.daysOfWeek.includes(today.getDay());
+        }
+        return false;
+      
+      case 'custom':
+        if (habit.frequency.daysOfWeek) {
+          return habit.frequency.daysOfWeek.includes(today.getDay());
+        }
+        return false;
+      
+      default:
+        return false;
+    }
+  }
+
+  // Verificar si un hábito fue completado hoy
+  static wasCompletedToday(habitId: string, completions: HabitCompletion[]): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const todayCompletion = completions.find(completion => 
+      completion.habitId === habitId &&
+      completion.date.getTime() === today.getTime()
+    );
+
+    return todayCompletion?.completed || false;
+  }
+
+  // Marcar hábito como completado hoy
+  static async markHabitCompleted(
+    habitId: string, 
+    state: AppState,
+    progressData?: any,
+    notes?: string,
+    images?: string[]
+  ): Promise<AppState> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Calcular XP ganado usando el servicio de ligas
+    const habit = state.habits.find(h => h.id === habitId);
+    const xpGained = habit 
+      ? LeagueLogic.calculateXpForHabitCompletion(habit.currentStreak)
+      : 10;
+
+    // Actualizar el hábito
+    const updatedHabits = state.habits.map(habit => {
+      if (habit.id === habitId) {
+        return {
+          ...habit,
+          currentStreak: habit.currentStreak + 1,
+          lastCompletedDate: today,
+        };
+      }
+      return habit;
+    });
+
+    // Agregar o actualizar la completión
+    const existingCompletionIndex = state.completions.findIndex(
+      completion => completion.habitId === habitId && completion.date.getTime() === today.getTime()
+    );
+
+    let updatedCompletions = [...state.completions];
+    const completionData = {
+      habitId,
+      date: today,
+      completed: true,
+      progressData,
+      notes,
+      images,
+    };
+
+    if (existingCompletionIndex >= 0) {
+      updatedCompletions[existingCompletionIndex] = completionData;
+    } else {
+      updatedCompletions.push(completionData);
+    }
+
+    // Actualizar XP del usuario
+    const updatedUser = {
+      ...state.user,
+      xp: state.user.xp + xpGained,
+      weeklyXp: state.user.weeklyXp + xpGained,
+    };
+
+    const newState: AppState = {
+      ...state,
+      habits: updatedHabits,
+      completions: updatedCompletions,
+      user: updatedUser,
+    };
+
+    await StorageService.saveAppState(newState);
+    return newState;
+  }
+
+  // Verificar si se perdió la racha y perder vida
+  static async checkAndHandleMissedHabits(state: AppState): Promise<AppState> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let updatedState = { ...state };
+    let livesLost = 0;
+
+    // Verificar cada hábito activo
+    for (const habit of state.habits) {
+      if (!habit.isActive) continue;
+
+      const shouldComplete = this.shouldCompleteToday(habit);
+      const wasCompleted = this.wasCompletedToday(habit.id, state.completions);
+
+      // Si debería completarse pero no se completó
+      if (shouldComplete && !wasCompleted) {
+        // Verificar si no se completó ayer tampoco (para no perder vida el mismo día)
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const wasCompletedYesterday = state.completions.some(completion =>
+          completion.habitId === habit.id &&
+          completion.date.getTime() === yesterday.getTime() &&
+          completion.completed
+        );
+
+        // Si no se completó ayer, perder vida y resetear racha
+        if (!wasCompletedYesterday) {
+          livesLost++;
+          
+          // Resetear racha del hábito
+          updatedState.habits = updatedState.habits.map(h => 
+            h.id === habit.id ? { ...h, currentStreak: 0, isActive: false } : h
+          );
+        }
+      }
+    }
+
+    // Actualizar vidas del usuario
+    if (livesLost > 0) {
+      updatedState.user = {
+        ...updatedState.user,
+        lives: Math.max(0, updatedState.user.lives - livesLost),
+      };
+    }
+
+    await StorageService.saveAppState(updatedState);
+    return updatedState;
+  }
+
+  // Obtener retos aleatorios para reactivar hábitos
+  static getRandomChallenges(challenges: Challenge[], count: number = 1): Challenge[] {
+    const availableChallenges = challenges.filter(c => !c.isCompleted);
+    const shuffled = [...availableChallenges].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, count);
+  }
+
+  // Completar reto y reactivar hábito
+  static async completeChallengeAndReactivateHabit(
+    challengeId: string,
+    habitId: string,
+    state: AppState
+  ): Promise<AppState> {
+    // Marcar reto como completado
+    const updatedChallenges = state.challenges.map(challenge =>
+      challenge.id === challengeId 
+        ? { ...challenge, isCompleted: true }
+        : challenge
+    );
+
+    // Reactivar hábito
+    const updatedHabits = state.habits.map(habit =>
+      habit.id === habitId
+        ? { ...habit, isActive: true, currentStreak: 0 }
+        : habit
+    );
+
+    // Restaurar una vida
+    const updatedUser = {
+      ...state.user,
+      lives: Math.min(state.user.maxLives, state.user.lives + 1),
+      completedChallenges: [...state.user.completedChallenges, challengeId],
+    };
+
+    const newState: AppState = {
+      ...state,
+      challenges: updatedChallenges,
+      habits: updatedHabits,
+      user: updatedUser,
+    };
+
+    await StorageService.saveAppState(newState);
+    return newState;
+  }
+
+  // Crear nuevo hábito
+  static async createHabit(
+    name: string,
+    frequency: any,
+    progressType: any,
+    activeByUser: boolean,
+    description?: string,
+    targetDate?: Date,
+    state?: AppState
+  ): Promise<AppState> {
+    const newHabit: Habit = {
+      id: `habit_${Date.now()}`,
+      name,
+      description,
+      startDate: new Date(),
+      targetDate,
+      currentStreak: 0,
+      frequency,
+      progressType,
+      isActive: true,
+      activeByUser,
+      createdAt: new Date(),
+    };
+
+    if (!state) {
+      throw new Error('State is required');
+    }
+
+    const updatedHabits = [...state.habits, newHabit];
+    const updatedUser = {
+      ...state.user,
+      totalHabits: state.user.totalHabits + 1,
+    };
+
+    const newState: AppState = {
+      ...state,
+      habits: updatedHabits,
+      user: updatedUser,
+    };
+
+    await StorageService.saveAppState(newState);
+    return newState;
+  }
+
+  // Obtener estadísticas del usuario
+  static getUserStats(state: AppState) {
+    const activeHabits = state.habits.filter(h => h.isActive && h.activeByUser);
+    const completedToday = state.completions.filter(c => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return c.date.getTime() === today.getTime() && c.completed;
+    }).length;
+
+    const totalStreak = state.habits.reduce((sum, habit) => sum + habit.currentStreak, 0);
+
+    return {
+      activeHabits: activeHabits.length,
+      completedToday,
+      totalStreak,
+      lives: state.user.lives,
+      maxLives: state.user.maxLives,
+      totalHabits: state.user.totalHabits,
+    };
+  }
+
+  // Activar hábito (por usuario)
+  static async activateHabit(habitId: string, state: AppState): Promise<AppState> {
+    const updatedHabits = state.habits.map(habit =>
+      habit.id === habitId
+        ? { ...habit, activeByUser: true }
+        : habit
+    );
+
+    const newState: AppState = {
+      ...state,
+      habits: updatedHabits,
+    };
+
+    await StorageService.saveAppState(newState);
+    return newState;
+  }
+
+  // Desactivar hábito (por usuario) - Borra progreso pero mantiene notas
+  static async deactivateHabit(habitId: string, state: AppState): Promise<AppState> {
+    // Actualizar hábito: desactivar y resetear racha
+    const updatedHabits = state.habits.map(habit =>
+      habit.id === habitId
+        ? {
+            ...habit,
+            activeByUser: false,
+            currentStreak: 0,
+            lastCompletedDate: undefined,
+          }
+        : habit
+    );
+
+    // Borrar progreso (progressData) pero mantener notas e imágenes
+    const updatedCompletions = state.completions.map(completion =>
+      completion.habitId === habitId
+        ? {
+            ...completion,
+            completed: false,
+            progressData: undefined,
+          }
+        : completion
+    );
+
+    const newState: AppState = {
+      ...state,
+      habits: updatedHabits,
+      completions: updatedCompletions,
+    };
+
+    await StorageService.saveAppState(newState);
+    return newState;
+  }
+
+  // Verificar todos los retos de vida disponibles
+  static getAvailableLifeChallenges(state: AppState): Map<string, boolean> {
+    const availabilityMap = new Map<string, boolean>();
+
+    console.log("state: ", state)
+
+    if(state.lifeChallenges) for (const challenge of state.lifeChallenges) {
+      const isAvailable = LifeChallengeVerifier.verifyChallenge(challenge, state);
+      availabilityMap.set(challenge.id, isAvailable);
+    }
+
+    return availabilityMap;
+  }
+
+  // Redimir un reto de vida
+  static async redeemLifeChallenge(challengeId: string, state: AppState): Promise<AppState> {
+    const challenge = state.lifeChallenges.find(lc => lc.id === challengeId);
+    if (!challenge) {
+      throw new Error('Challenge not found');
+    }
+
+    // Verificar si el reto está disponible
+    const isAvailable = LifeChallengeVerifier.verifyChallenge(challenge, state);
+    if (!isAvailable) {
+      throw new Error('Challenge requirements not met');
+    }
+
+    // Verificar si aún se puede redimir
+    if (challenge.redeemable === 'once' && challenge.completedCount > 0) {
+      throw new Error('Challenge already redeemed');
+    }
+
+    // Actualizar el reto
+    const updatedLifeChallenges = state.lifeChallenges.map(lc =>
+      lc.id === challengeId
+        ? { ...lc, completedCount: lc.completedCount + 1 }
+        : lc
+    );
+
+    // Dar la recompensa de vidas
+    const updatedUser = {
+      ...state.user,
+      lives: Math.min(state.user.maxLives, state.user.lives + challenge.reward),
+    };
+
+    const newState: AppState = {
+      ...state,
+      lifeChallenges: updatedLifeChallenges,
+      user: updatedUser,
+    };
+
+    await StorageService.saveAppState(newState);
+    return newState;
+  }
+}

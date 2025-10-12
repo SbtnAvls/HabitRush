@@ -1,97 +1,207 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# HabitRush 🏃‍♂️
 
-# Getting Started
+Una aplicación móvil para crear y mantener hábitos con un sistema gamificado de vidas y retos.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Características Principales
 
-## Step 1: Start Metro
+### 🎯 Gestión de Hábitos
+- **Crear hábitos personalizados** con nombre, descripción, frecuencia y fecha objetivo
+- **Frecuencias flexibles**: Diario, semanal o personalizado (días específicos)
+- **Tipos de progreso**: Sí/No, Tiempo (horas/minutos) o Cantidad (repeticiones)
+- **Seguimiento de rachas** para mantener la motivación
+- **Fecha objetivo opcional** para metas a largo plazo
+- **Visualización semanal** con burbujas de colores para cada día
+- **Pantalla de detalle** con métricas semanales, mensuales y anuales
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+### ❤️ Sistema de Vidas y Retos
+- **2 vidas iniciales** para cada usuario
+- **Pierdes una vida** cuando no completas un hábito en el día asignado
+- **Visualización clara** del estado de vidas con corazones
+- **10 retos únicos** para ganar vidas extras
+- **Recompensas de 1 a 3 vidas** por reto completado
+- **Retos de una sola vez** y **retos ilimitados**
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+### 🏆 Sistema de Retos
+- **Retos automáticos** cuando un hábito se desactiva por perder la racha
+- **Diversidad de retos**: Ejercicio, aprendizaje, meditación y creatividad
+- **Recuperación de vidas** al completar retos exitosamente
+- **Reactivación de hábitos** después de completar un reto
 
-```sh
-# Using npm
-npm start
+### 📊 Estadísticas y Perfil
+- **Dashboard principal** con estadísticas en tiempo real
+- **Perfil de usuario** con historial completo
+- **Seguimiento de progreso** y logros
 
-# OR using Yarn
-yarn start
+## Instalación
+
+### Prerrequisitos
+- Node.js >= 20
+- React Native CLI
+- Android Studio (para Android)
+- Xcode (para iOS)
+
+### Pasos de Instalación
+
+1. **Clonar el repositorio**
+```bash
+git clone <repository-url>
+cd HabitRush
 ```
 
-## Step 2: Build and run your app
+2. **Instalar dependencias**
+```bash
+npm install
+```
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+3. **Instalación de dependencias nativas (iOS)**
+```bash
+cd ios && pod install && cd ..
+```
 
-### Android
+4. **Ejecutar la aplicación**
 
-```sh
-# Using npm
+Para Android:
+```bash
 npm run android
-
-# OR using Yarn
-yarn android
 ```
 
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
+Para iOS:
+```bash
 npm run ios
-
-# OR using Yarn
-yarn ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## Estructura del Proyecto
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+```
+src/
+├── components/          # Componentes reutilizables
+│   ├── HabitCard.tsx   # Tarjeta individual de hábito
+│   └── AddHabitModal.tsx # Modal para crear hábitos
+├── context/            # Contexto global de la aplicación
+│   └── AppContext.tsx  # Estado global y funciones
+├── navigation/         # Configuración de navegación
+│   └── AppNavigator.tsx # Navegación principal
+├── screens/           # Pantallas de la aplicación
+│   ├── HomeScreen.tsx # Pantalla principal
+│   └── ProfileScreen.tsx # Pantalla de perfil
+├── services/          # Lógica de negocio
+│   ├── storage.ts     # Manejo de almacenamiento local
+│   └── habitLogic.ts  # Lógica de hábitos y vidas
+└── types/             # Definiciones de TypeScript
+    └── index.ts       # Interfaces y tipos
+```
 
-## Step 3: Modify your app
+## Cómo Usar la Aplicación
 
-Now that you have successfully run the app, let's make changes!
+### 1. Crear tu Primer Hábito
+- Toca el botón "+" en la pantalla principal
+- Ingresa el nombre y descripción del hábito
+- Selecciona la frecuencia (diario, semanal o personalizado)
+- Elige el tipo de progreso (Sí/No, Tiempo o Cantidad)
+- **Elige el estado inicial**: Activo o Inactivo
+- Opcionalmente, establece una fecha objetivo
+- Guarda el hábito
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+### 2. Completar Hábitos
+- Cada día que debas completar un hábito, aparecerá como "Pendiente"
+- Toca "Completar" cuando hayas realizado la actividad
+- Se abrirá un modal según el tipo de progreso:
+  - **Sí/No**: Confirmación simple
+  - **Tiempo**: Ingresa horas y minutos
+  - **Cantidad**: Ingresa el número de repeticiones
+- **Opcionales**: Agrega notas y hasta 5 imágenes
+- La burbuja del día se pintará de color verde
+- Tu racha se incrementará automáticamente
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+### 3. Ver Detalles y Métricas
+- Toca cualquier tarjeta de hábito para ver su detalle
+- Visualiza métricas semanales, mensuales y anuales
+- Revisa estadísticas específicas según el tipo de progreso:
+  - **Sí/No**: Porcentaje de completado
+  - **Tiempo**: Total de horas/minutos y promedio diario
+  - **Cantidad**: Total acumulado y promedio diario
+- **Historial con detalles**: Ve las últimas 10 completaciones con notas e imágenes
+- **Galería de imágenes**: Toca cualquier imagen para verla en grande
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+### 4. Manejo de Vidas
+- Si no completas un hábito en el día asignado, perderás una vida
+- La burbuja del día se pintará de color rojo
+- Cuando pierdas todas las vidas, los hábitos se desactivarán
+- Completa retos para reactivar hábitos y recuperar vidas
 
-## Congratulations! :tada:
+### 5. Sistema de Retos
+- Cuando un hábito se desactiva, podrás seleccionar "Reactivar"
+- Se te asignará un reto aleatorio para completar
+- Una vez completado el reto, el hábito se reactivará y recuperarás una vida
 
-You've successfully run and modified your React Native App. :partying_face:
+### 6. Activar/Desactivar Hábitos Manualmente
+- **Ver hábitos inactivos**: Desplázate hacia abajo en la lista para ver la sección "Hábitos Inactivos"
+- **Activar rápido**: Toca cualquier hábito inactivo en la lista para activarlo instantáneamente
+- **En el detalle**: Toca el botón "Activar" o "Desactivar" en la esquina superior derecha
+- **Al desactivar**: 
+  - Aparecerá una alerta de confirmación
+  - Se borrará tu progreso y racha
+  - Se mantendrán tus notas e imágenes
+  - Podrás reactivarlo cuando quieras
 
-### Now what?
+### 7. Completar Retos para Ganar Vidas
+- **Ver retos disponibles**: Scroll hasta "Retos para Obtener Vidas" debajo de los hábitos
+- **Grid de 3 columnas**: Visualiza hasta 10 retos diferentes
+- **Indicadores visuales**:
+  - Badge rojo "!" si el reto está disponible para redimir
+  - Borde verde si puedes completarlo ahora
+  - Badge de "Completado" para retos de una sola vez ya redimidos
+- **Retos disponibles**:
+  1. 🌟 Semana Perfecta (+1 vida, una vez)
+  2. 🏆 Mes Imparable (+2 vidas, ilimitado)
+  3. ⏰ Salvación de Último Momento (+1 vida, una vez)
+  4. 🌅 Madrugador (+1 vida, una vez)
+  5. 👑 Triple Corona (+2 vidas, una vez)
+  6. 🎯 Objetivo Alcanzado (+3 vidas, ilimitado)
+  7. 🏅 Coleccionista de Logros (+2 vidas, una vez)
+  8. 💪 Superviviente (+2 vidas, ilimitado)
+  9. ⏳ Maestro del Tiempo (+3 vidas, ilimitado)
+  10. 📝 Escritor Prolífico (+2 vidas, una vez)
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+## Tecnologías Utilizadas
 
-# Troubleshooting
+- **React Native** - Framework principal
+- **TypeScript** - Tipado estático
+- **React Navigation** - Navegación entre pantallas
+- **AsyncStorage** - Almacenamiento local persistente
+- **React Context** - Manejo de estado global
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+## Características Técnicas
 
-# Learn More
+- **Persistencia de datos** con AsyncStorage
+- **Estado global** con React Context
+- **Navegación por tabs** con React Navigation
+- **Componentes reutilizables** y modulares
+- **Manejo de fechas** y lógica de frecuencia
+- **Sistema de notificaciones** (preparado para futuras implementaciones)
 
-To learn more about React Native, take a look at the following resources:
+## Próximas Funcionalidades
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+- [ ] Notificaciones push para recordatorios
+- [ ] Estadísticas detalladas y gráficos
+- [ ] Logros y badges
+- [ ] Compartir progreso en redes sociales
+- [ ] Modo oscuro
+- [ ] Personalización de retos
+- [ ] Sincronización en la nube
+
+## Contribuir
+
+1. Fork el proyecto
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+
+## Licencia
+
+Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más detalles.
+
+---
+
+**¡Construye hábitos duraderos con HabitRush!** 🚀
