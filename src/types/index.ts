@@ -38,6 +38,22 @@ export interface User {
   league: number; // 1 (mejor) a 5 (inicial)
   weeklyXp: number; // XP acumulado en la semana actual
   leagueWeekStart: Date; // Inicio de la semana de la liga
+  email?: string; // Email del usuario autenticado (opcional para compatibilidad)
+}
+
+export interface AuthState {
+  isAuthenticated: boolean;
+  user: AuthUser | null;
+  loading: boolean;
+}
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  theme?: 'light' | 'dark';
+  font_size?: 'small' | 'medium' | 'large';
+  created_at: string;
 }
 
 export interface Challenge {

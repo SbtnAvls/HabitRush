@@ -11,6 +11,8 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Frequency, ProgressType } from '../types';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { useAppContext } from '../context/AppContext';
+import { AuthModal } from './AuthModal';
 
 interface AddHabitModalProps {
   visible: boolean;
@@ -41,6 +43,7 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
   onSave,
 }) => {
   const styles = useThemedStyles(baseStyles);
+  const { isAuthenticated, checkAuthentication, state } = useAppContext();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [frequencyType, setFrequencyType] = useState<'daily' | 'weekly' | 'custom'>('daily');
@@ -49,6 +52,7 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
   const [activeByUser, setActiveByUser] = useState(true);
   const [showTargetDatePicker, setShowTargetDatePicker] = useState(false);
   const [targetDate, setTargetDate] = useState<Date | undefined>(undefined);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const handleDayToggle = (dayId: number) => {
     setSelectedDays(prev => (
@@ -58,7 +62,16 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
     ));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Verificar si es el primer hábito y si el usuario está autenticado
+    const isFirstHabit = state.habits.length === 0;
+    
+    if (isFirstHabit && !isAuthenticated) {
+      // Mostrar modal de autenticación
+      setShowAuthModal(true);
+      return;
+    }
+
     if (!name.trim()) {
       Alert.alert('Error', 'Por favor ingresa un nombre para el habito');
       return;
@@ -91,6 +104,15 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
     setActiveByUser(true);
     setTargetDate(undefined);
     onClose();
+  };
+
+  const handleAuthSuccess = async () => {
+    setShowAuthModal(false);
+    await checkAuthentication();
+    // Después de autenticarse, intentar guardar de nuevo
+    Alert.alert('¡Bienvenido!', 'Ahora puedes crear tu hábito', [
+      { text: 'OK' }
+    ]);
   };
 
   const renderFrequencyOptions = () => (
@@ -202,19 +224,25 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
   );
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalBackground}>
-        <View style={styles.modalContainer}>
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={styles.title}>Crear nuevo habito</Text>
+    <>
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
+      <Modal
+        visible={visible}
+        animationType="slide"
+        transparent
+        onRequestClose={onClose}
+      >
+        <View style={styles.modalBackground}>
+          <View style={styles.modalContainer}>
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.title}>Crear nuevo habito</Text>
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Informacion general</Text>
@@ -327,6 +355,7 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
         </View>
       </View>
     </Modal>
+    </>
   );
 };
 

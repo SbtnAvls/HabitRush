@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import { useAppContext } from '../context/AppContext';
 import { HabitLogic } from '../services/habitLogic';
 import { AppHeader } from '../components/AppHeader';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { AuthModal } from '../components/AuthModal';
 
 interface ProfileScreenProps {
   navigation?: any;
@@ -17,8 +18,37 @@ interface ProfileScreenProps {
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const styles = useThemedStyles(baseStyles);
-  const { state } = useAppContext();
+  const { state, isAuthenticated, authUser, logout, checkAuthentication } = useAppContext();
   const stats = HabitLogic.getUserStats(state);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Cerrar Sesión',
+      '¿Estás seguro de que quieres cerrar sesión?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cerrar Sesión',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            Alert.alert('Éxito', 'Sesión cerrada correctamente');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLogin = () => {
+    setShowAuthModal(true);
+  };
+
+  const handleAuthSuccess = async () => {
+    setShowAuthModal(false);
+    await checkAuthentication();
+    Alert.alert('Éxito', '¡Bienvenido!');
+  };
 
   const handleResetData = () => {
     Alert.alert(
@@ -48,20 +78,33 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
   return (
     <View style={styles.containerWrapper}>
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
       <AppHeader navigation={navigation} />
       <ScrollView style={styles.container}>
         {/* Header del perfil */}
         <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {state.user.name.charAt(0).toUpperCase()}
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {state.user.name.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <Text style={styles.userName}>{state.user.name}</Text>
+          {isAuthenticated && authUser && (
+            <Text style={styles.userEmail}>{authUser.email}</Text>
+          )}
+          <Text style={styles.joinDate}>
+            Miembro desde {formatDate(state.user.createdAt)}
           </Text>
+          {isAuthenticated && (
+            <View style={styles.authBadge}>
+              <Text style={styles.authBadgeText}>✓ Cuenta sincronizada</Text>
+            </View>
+          )}
         </View>
-        <Text style={styles.userName}>{state.user.name}</Text>
-        <Text style={styles.joinDate}>
-          Miembro desde {formatDate(state.user.createdAt)}
-        </Text>
-      </View>
 
       {/* Estadísticas generales */}
       <View style={styles.section}>
@@ -162,6 +205,38 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         )}
       </View>
 
+      {/* Cuenta */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Cuenta</Text>
+        
+        {isAuthenticated ? (
+          <>
+            <View style={styles.accountInfo}>
+              <Text style={styles.accountLabel}>Estado</Text>
+              <Text style={styles.accountValue}>Cuenta activa</Text>
+            </View>
+            <TouchableOpacity style={styles.settingItem} onPress={handleLogout}>
+              <Text style={[styles.settingText, styles.logoutText]}>Cerrar Sesión</Text>
+              <Text style={styles.settingArrow}>›</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <View style={styles.accountInfo}>
+              <Text style={styles.accountLabel}>Estado</Text>
+              <Text style={styles.accountValue}>Sin cuenta vinculada</Text>
+            </View>
+            <TouchableOpacity 
+              style={[styles.settingItem, styles.loginButton]} 
+              onPress={handleLogin}
+            >
+              <Text style={[styles.settingText, styles.loginText]}>Iniciar Sesión / Registrarse</Text>
+              <Text style={styles.settingArrow}>›</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
       {/* Configuración */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Configuración</Text>
@@ -214,9 +289,26 @@ const baseStyles = {
     color: '#2C3E50',
     marginBottom: 4,
   },
+  userEmail: {
+    fontSize: 14,
+    color: '#6C757D',
+    marginBottom: 4,
+  },
   joinDate: {
     fontSize: 14,
     color: '#6C757D',
+  },
+  authBadge: {
+    backgroundColor: '#4ECDC4',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  authBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   section: {
     backgroundColor: '#FFFFFF',
@@ -347,6 +439,36 @@ const baseStyles = {
   settingArrow: {
     fontSize: 18,
     color: '#6C757D',
+  },
+  accountInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E9ECEF',
+  },
+  accountLabel: {
+    fontSize: 16,
+    color: '#6C757D',
+  },
+  accountValue: {
+    fontSize: 16,
+    color: '#2C3E50',
+    fontWeight: '600',
+  },
+  logoutText: {
+    color: '#E74C3C',
+  },
+  loginButton: {
+    backgroundColor: '#E8F8F7',
+    borderRadius: 8,
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
+  loginText: {
+    color: '#4ECDC4',
+    fontWeight: '600',
   },
   footer: {
     alignItems: 'center',

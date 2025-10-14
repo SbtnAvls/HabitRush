@@ -21,16 +21,27 @@ Una aplicación móvil para crear y mantener hábitos con un sistema gamificado 
 - **Recompensas de 1 a 3 vidas** por reto completado
 - **Retos de una sola vez** y **retos ilimitados**
 
-### 🏆 Sistema de Retos
-- **Retos automáticos** cuando un hábito se desactiva por perder la racha
-- **Diversidad de retos**: Ejercicio, aprendizaje, meditación y creatividad
-- **Recuperación de vidas** al completar retos exitosamente
-- **Reactivación de hábitos** después de completar un reto
+### 🏆 Sistema de Desafíos
+- **Desafíos automáticos** cuando un hábito se desactiva por perder la racha
+- **Diversidad de desafíos**: Ejercicio, aprendizaje, meditación y creatividad
+- **Recuperación de vidas** al completar desafíos exitosamente
+- **Reactivación de hábitos** después de completar un desafío
+- **Sincronización con el backend** para usuarios autenticados
+- **Desafíos compartidos** entre dispositivos si tienes cuenta
 
 ### 📊 Estadísticas y Perfil
 - **Dashboard principal** con estadísticas en tiempo real
 - **Perfil de usuario** con historial completo
 - **Seguimiento de progreso** y logros
+
+### 🔐 Sistema de Autenticación y Sincronización
+- **Login no intrusivo** - No se muestra al abrir la app
+- **Autenticación al crear primer hábito** - Solo se solicita cuando es necesario
+- **Sincronización completa** - Hábitos, completaciones, desafíos y vidas en la nube
+- **Modo offline-first** - Funciona sin conexión, sincroniza cuando hay internet
+- **Gestión de cuenta** - Login, registro, logout y actualización de perfil
+- **Persistencia de sesión** - Mantiene tu sesión activa entre aperturas de la app
+- **Historial de vidas** - Registro completo de todas las vidas ganadas/perdidas
 
 ## Instalación
 
@@ -58,7 +69,14 @@ npm install
 cd ios && pod install && cd ..
 ```
 
-4. **Ejecutar la aplicación**
+4. **Configurar la API (opcional)**
+
+Si quieres usar el sistema de autenticación:
+- Edita `src/config/api.config.ts`
+- Cambia `API_BASE_URL` por la URL de tu backend
+- Ver `AUTH_QUICKSTART.md` para más detalles
+
+5. **Ejecutar la aplicación**
 
 Para Android:
 ```bash
@@ -76,25 +94,40 @@ npm run ios
 src/
 ├── components/          # Componentes reutilizables
 │   ├── HabitCard.tsx   # Tarjeta individual de hábito
-│   └── AddHabitModal.tsx # Modal para crear hábitos
-├── context/            # Contexto global de la aplicación
-│   └── AppContext.tsx  # Estado global y funciones
-├── navigation/         # Configuración de navegación
+│   ├── AddHabitModal.tsx # Modal para crear hábitos
+│   └── AuthModal.tsx   # Modal de login/registro
+├── config/            # Configuración de la aplicación
+│   └── api.config.ts  # URLs y endpoints de la API
+├── context/           # Contexto global de la aplicación
+│   └── AppContext.tsx # Estado global y funciones
+├── navigation/        # Configuración de navegación
 │   └── AppNavigator.tsx # Navegación principal
 ├── screens/           # Pantallas de la aplicación
 │   ├── HomeScreen.tsx # Pantalla principal
 │   └── ProfileScreen.tsx # Pantalla de perfil
 ├── services/          # Lógica de negocio
+│   ├── apiClient.ts   # Cliente de Axios configurado
 │   ├── storage.ts     # Manejo de almacenamiento local
-│   └── habitLogic.ts  # Lógica de hábitos y vidas
+│   ├── habitLogic.ts  # Lógica de hábitos y vidas
+│   ├── leagueLogic.ts # Lógica de ligas (local)
+│   ├── habitService.ts # Sincronización de hábitos con backend
+│   ├── completionService.ts # Sincronización de completaciones
+│   ├── challengeService.ts # Sincronización de desafíos
+│   ├── lifeChallengeService.ts # Sincronización de desafíos de vida
+│   ├── leagueService.ts # Sincronización de ligas
+│   └── authService.ts # Servicio de autenticación
 └── types/             # Definiciones de TypeScript
     └── index.ts       # Interfaces y tipos
 ```
 
 ## Cómo Usar la Aplicación
 
-### 1. Crear tu Primer Hábito
+### 1. Crear tu Primer Hábito (con Autenticación)
 - Toca el botón "+" en la pantalla principal
+- **Primera vez**: Se te pedirá crear una cuenta o iniciar sesión
+  - Puedes registrarte con email y contraseña
+  - O iniciar sesión si ya tienes cuenta
+  - También puedes cancelar y crear el hábito sin cuenta (solo local)
 - Ingresa el nombre y descripción del hábito
 - Selecciona la frecuencia (diario, semanal o personalizado)
 - Elige el tipo de progreso (Sí/No, Tiempo o Cantidad)
@@ -129,10 +162,11 @@ src/
 - Cuando pierdas todas las vidas, los hábitos se desactivarán
 - Completa retos para reactivar hábitos y recuperar vidas
 
-### 5. Sistema de Retos
+### 5. Sistema de Desafíos
 - Cuando un hábito se desactiva, podrás seleccionar "Reactivar"
-- Se te asignará un reto aleatorio para completar
-- Una vez completado el reto, el hábito se reactivará y recuperarás una vida
+- Se te asignará un desafío aleatorio para completar
+- Una vez completado el desafío, el hábito se reactivará y recuperarás una vida
+- **Si tienes cuenta**: Los desafíos se sincronizan con el servidor automáticamente
 
 ### 6. Activar/Desactivar Hábitos Manualmente
 - **Ver hábitos inactivos**: Desplázate hacia abajo en la lista para ver la sección "Hábitos Inactivos"
@@ -144,14 +178,16 @@ src/
   - Se mantendrán tus notas e imágenes
   - Podrás reactivarlo cuando quieras
 
-### 7. Completar Retos para Ganar Vidas
-- **Ver retos disponibles**: Scroll hasta "Retos para Obtener Vidas" debajo de los hábitos
-- **Grid de 3 columnas**: Visualiza hasta 10 retos diferentes
+### 7. Completar Desafíos de Vida para Ganar Vidas
+- **Ver desafíos disponibles**: Scroll hasta "Desafíos de Vida" debajo de los hábitos
+- **Grid de 3 columnas**: Visualiza hasta 10 desafíos diferentes
 - **Indicadores visuales**:
-  - Badge rojo "!" si el reto está disponible para redimir
+  - Badge rojo "!" si el desafío está disponible para redimir
   - Borde verde si puedes completarlo ahora
-  - Badge de "Completado" para retos de una sola vez ya redimidos
-- **Retos disponibles**:
+  - Badge de "Completado" para desafíos de una sola vez ya redimidos
+- **Sincronización automática**: Si tienes cuenta, tus vidas se sincronizan en la nube
+- **Historial de vidas**: Ve todas las vidas que has ganado/perdido (solo con cuenta)
+- **Desafíos disponibles**:
   1. 🌟 Semana Perfecta (+1 vida, una vez)
   2. 🏆 Mes Imparable (+2 vidas, ilimitado)
   3. ⏰ Salvación de Último Momento (+1 vida, una vez)
@@ -170,6 +206,8 @@ src/
 - **React Navigation** - Navegación entre pantallas
 - **AsyncStorage** - Almacenamiento local persistente
 - **React Context** - Manejo de estado global
+- **JWT Authentication** - Sistema de autenticación con tokens
+- **Axios** - Cliente HTTP con interceptores para comunicación con el backend
 
 ## Características Técnicas
 
@@ -182,13 +220,37 @@ src/
 
 ## Próximas Funcionalidades
 
+- [x] ✅ Sistema de autenticación y cuentas de usuario
+- [x] ✅ Sincronización con backend
+- [x] ✅ Sincronización de hábitos con la nube
+- [x] ✅ Sincronización de completaciones con la nube
+- [x] ✅ Sincronización de desafíos y desafíos de vida
+- [x] ✅ Historial de vidas
+- [x] ✅ Sistema de ligas y competencias
 - [ ] Notificaciones push para recordatorios
 - [ ] Estadísticas detalladas y gráficos
 - [ ] Logros y badges
 - [ ] Compartir progreso en redes sociales
 - [ ] Modo oscuro
-- [ ] Personalización de retos
-- [ ] Sincronización en la nube
+- [ ] Personalización de desafíos
+- [ ] Recuperación de contraseña
+- [ ] Autenticación social (Google, Facebook)
+
+## Documentación Adicional
+
+- **`AUTH_QUICKSTART.md`** - Guía rápida para configurar el sistema de autenticación
+- **`AUTHENTICATION.md`** - Documentación completa del sistema de autenticación
+- **`HABITS_API_INTEGRATION.md`** - Documentación de sincronización de hábitos
+- **`COMPLETIONS_API_INTEGRATION.md`** - Documentación de sincronización de completaciones
+- **`CHALLENGES_API_INTEGRATION.md`** - Documentación de sincronización de desafíos y desafíos de vida
+- **`LIFE_CHALLENGES_INTEGRATION_SUMMARY.md`** - Resumen de integración de desafíos de vida
+- **`LEAGUES_API_INTEGRATION.md`** - Documentación de sincronización de ligas
+- **`LEAGUES_INTEGRATION_SUMMARY.md`** - Resumen de integración de ligas
+- **`LEAGUES_ERROR_HANDLING.md`** - Manejo de errores en el sistema de ligas
+- **`STORAGE_POLICY_CHANGES.md`** - Política de almacenamiento local vs servidor
+- **`AXIOS_MIGRATION.md`** - Guía de migración a Axios
+- **`FEATURES.md`** - Lista detallada de todas las características
+- **`CHANGELOG.md`** - Historial de cambios
 
 ## Contribuir
 

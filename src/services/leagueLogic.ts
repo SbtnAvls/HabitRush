@@ -165,7 +165,7 @@ export class LeagueLogic {
   // Verificar y resetear semana si es necesario
   static async checkAndResetWeek(state: AppState): Promise<AppState> {
     if (this.hasWeekEnded(state.user.leagueWeekStart)) {
-      return await this.resetWeeklyProgress(state);
+      return await this.resetWeeklyProgress(state)
     }
     return state;
   }

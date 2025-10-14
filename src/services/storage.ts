@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   HABITS: 'habitRush_habits',
   COMPLETIONS: 'habitRush_completions',
   CHALLENGES: 'habitRush_challenges',
+  AUTH_TOKEN: 'habitRush_auth_token',
 };
 
 // Datos iniciales por defecto
@@ -247,6 +248,36 @@ export class StorageService {
       await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
     } catch (error) {
       console.error('Error clearing storage:', error);
+      throw error;
+    }
+  }
+
+  // Guardar token de autenticación (usado por AuthService)
+  static async saveAuthToken(token: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+    } catch (error) {
+      console.error('Error saving auth token:', error);
+      throw error;
+    }
+  }
+
+  // Obtener token de autenticación (usado por AuthService)
+  static async getAuthToken(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
+    }
+  }
+
+  // Eliminar token de autenticación (usado por AuthService)
+  static async removeAuthToken(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+    } catch (error) {
+      console.error('Error removing auth token:', error);
       throw error;
     }
   }
