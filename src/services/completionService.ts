@@ -19,6 +19,25 @@ export interface HabitCompletionAPI {
 }
 
 /**
+ * Life Challenge obtenido al completar un hábito
+ */
+export interface NewLifeChallengeObtained {
+  life_challenge_id: string;
+  title: string;
+  description: string;
+  reward: number;
+  status: 'obtained';
+  can_redeem: boolean;
+}
+
+/**
+ * Respuesta de creación de completación con posibles Life Challenges
+ */
+export interface CreateCompletionResponse extends HabitCompletionAPI {
+  new_life_challenges_obtained?: NewLifeChallengeObtained[];
+}
+
+/**
  * Interfaz de imagen de completación según la API
  */
 export interface CompletionImageAPI {
@@ -126,19 +145,20 @@ export class CompletionService {
 
   /**
    * Crea o actualiza una completación de hábito
+   * IMPORTANTE: La respuesta puede incluir new_life_challenges_obtained si se obtuvieron Life Challenges
    */
   static async createOrUpdateCompletion(
     habitId: string,
     completion: HabitCompletion
-  ): Promise<HabitCompletionAPI> {
+  ): Promise<CreateCompletionResponse> {
     try {
       const dto = CompletionMapper.toCreateDTO(completion);
-      
-      const response = await apiClient.post<HabitCompletionAPI>(
+
+      const response = await apiClient.post<CreateCompletionResponse>(
         `/habits/${habitId}/completions`,
         dto
       );
-      
+
       return response.data;
     } catch (error: any) {
       console.error('Error creating/updating completion:', error);

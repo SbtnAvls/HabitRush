@@ -11,6 +11,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Frequency, ProgressType } from '../types';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { useTheme } from '../theme/useTheme';
 import { useAppContext } from '../context/AppContext';
 import { AuthModal } from './AuthModal';
 
@@ -43,7 +44,8 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
   onSave,
 }) => {
   const styles = useThemedStyles(baseStyles);
-  const { isAuthenticated, checkAuthentication, state } = useAppContext();
+  const theme = useTheme();
+  const { isAuthenticated, checkAuthentication, state, refreshState } = useAppContext();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [frequencyType, setFrequencyType] = useState<'daily' | 'weekly' | 'custom'>('daily');
@@ -108,8 +110,11 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
 
   const handleAuthSuccess = async () => {
     setShowAuthModal(false);
-    await checkAuthentication();
-    // Después de autenticarse, intentar guardar de nuevo
+
+    // Recargar el estado completo después de autenticarse
+    await refreshState();
+
+    // Después de autenticarse, el usuario puede crear su hábito
     Alert.alert('¡Bienvenido!', 'Ahora puedes crear tu hábito', [
       { text: 'OK' }
     ]);
@@ -188,7 +193,7 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
         >
           Si / No
         </Text>
-        <Text style={styles.optionDescription}>
+        <Text style={[styles.optionDescription, progressType === 'yes_no' && styles.selectedOptionDescription]}>
           Marca el habito como completado o no
         </Text>
       </TouchableOpacity>
@@ -202,7 +207,7 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
         >
           Tiempo dedicado
         </Text>
-        <Text style={styles.optionDescription}>
+        <Text style={[styles.optionDescription, progressType === 'time' && styles.selectedOptionDescription]}>
           Registra horas o minutos dedicados al habito
         </Text>
       </TouchableOpacity>
@@ -216,7 +221,7 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
         >
           Cantidad
         </Text>
-        <Text style={styles.optionDescription}>
+        <Text style={[styles.optionDescription, progressType === 'count' && styles.selectedOptionDescription]}>
           Cuenta repeticiones o unidades completadas
         </Text>
       </TouchableOpacity>
@@ -251,6 +256,7 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
               <TextInput
                 style={styles.input}
                 placeholder="Ej. Meditar"
+                placeholderTextColor={theme.colors.textMuted}
                 value={name}
                 onChangeText={setName}
               />
@@ -259,6 +265,7 @@ export const AddHabitModal: React.FC<AddHabitModalProps> = ({
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Describe brevemente el habito"
+                placeholderTextColor={theme.colors.textMuted}
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -432,6 +439,9 @@ const baseStyles = {
     fontSize: 12,
     color: '#6C757D',
     marginTop: 4,
+  },
+  selectedOptionDescription: {
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   daysContainer: {
     marginTop: 12,

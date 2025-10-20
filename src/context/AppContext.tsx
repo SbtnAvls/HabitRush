@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { AppState, Settings, ThemePreference, AuthUser, User } from '../types';
 import { StorageService } from '../services/storage';
+import { SecureStorage } from '../services/secureStorage';
 import { HabitLogic } from '../services/habitLogic';
 import { LeagueLogic } from '../services/leagueLogic';
 import { AuthService } from '../services/authService';
@@ -9,6 +10,8 @@ import { CompletionService } from '../services/completionService';
 import { ChallengeService } from '../services/challengeService';
 import { LifeChallengeService } from '../services/lifeChallengeService';
 import { LeagueService } from '../services/leagueService';
+import { UserService } from '../services/userService';
+import sessionEventEmitter, { SESSION_EVENTS } from '../services/sessionEventEmitter';
 
 interface AppContextType {
   state: AppState;
@@ -24,7 +27,7 @@ interface AppContextType {
     progressData?: any,
     notes?: string,
     images?: string[]
-  ) => Promise<void>;
+  ) => Promise<{ success: boolean; lifeChallengesObtained: any[] | null }>;
   createHabit: (
     name: string,
     frequency: any,
@@ -60,22 +63,37 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isHandlingSessionExpiry, setIsHandlingSessionExpiry] = useState(false);
 
   const checkAuthentication = async (): Promise<boolean> => {
     try {
-      const token = await AuthService.getToken();
-      if (!token) {
+      // Verificar si necesitamos migrar tokens desde AsyncStorage
+      const needsMigration = await AuthService.checkAndMigrateTokens();
+      if (needsMigration) {
         setIsAuthenticated(false);
         setAuthUser(null);
         return false;
       }
 
+      // Verificar si hay tokens válidos
+      const isAuth = await AuthService.isAuthenticated();
+      if (!isAuth) {
+        setIsAuthenticated(false);
+        setAuthUser(null);
+        return false;
+      }
+
+      // Validar el token con el servidor llamando a getMe
+      // El apiClient manejará el refresh automáticamente si es necesario
       const user = await AuthService.getMe();
       setIsAuthenticated(true);
       setAuthUser(user);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error checking authentication:', error);
+
+      // Si hay un error 401, el token es inválido
+      // El interceptor ya lo habrá eliminado y emitido el evento
       setIsAuthenticated(false);
       setAuthUser(null);
       return false;
@@ -87,31 +105,68 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       await AuthService.logout();
       setIsAuthenticated(false);
       setAuthUser(null);
-      
+
       // Obtener estado por defecto (limpio) desde StorageService
       const defaultState = StorageService.getDefaultAppState();
-      
+
       // Mantener solo la configuración del usuario
       const clearedState: AppState = {
         ...defaultState,
         settings: state.settings, // Mantener configuración (tema, preferencias)
       };
-      
+
       setState(clearedState);
-      
+
       // Limpiar storage con estado inicial
       await StorageService.saveAppState(clearedState);
-      
-      console.log('Logout completed, all data cleared and reset to defaults');
     } catch (error) {
       console.error('Error during logout:', error);
+    }
+  };
+
+  /**
+   * Maneja la sesión expirada (401)
+   * Se llama automáticamente cuando el interceptor detecta un 401
+   */
+  const handleSessionExpired = async () => {
+    // Prevenir múltiples llamadas simultáneas
+    if (isHandlingSessionExpiry) {
+      return;
+    }
+
+    // Si no estaba autenticado, no hacer nada
+    if (!isAuthenticated) {
+      return;
+    }
+    setIsHandlingSessionExpiry(true);
+
+    try {
+      // Marcar como no autenticado
+      setIsAuthenticated(false);
+      setAuthUser(null);
+
+      // Obtener estado por defecto (limpio)
+      const defaultState = StorageService.getDefaultAppState();
+
+      // Mantener solo la configuración del usuario
+      const clearedState: AppState = {
+        ...defaultState,
+        settings: state.settings, // Mantener configuración
+      };
+
+      // Actualizar el estado inmediatamente
+      setState(clearedState);
+
+      // Guardar el estado limpio en storage
+      await StorageService.saveAppState(clearedState);
+    } finally {
+      setIsHandlingSessionExpiry(false);
     }
   };
 
   const syncHabits = async () => {
     try {
       if (!isAuthenticated) {
-        console.log('User not authenticated, skipping habit sync');
         return;
       }
 
@@ -124,10 +179,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         ...state,
         habits: serverHabits,
       };
-      
+
       setState(updatedState);
-      
-      console.log('Habits synced successfully (memory only)');
     } catch (error) {
       console.error('Error syncing habits:', error);
       // No lanzar error, mantener hábitos locales
@@ -137,61 +190,139 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const loadAppState = async () => {
     try {
       setLoading(true);
-      
+
       // Verificar autenticación
       const authenticated = await checkAuthentication();
-      
-      let appState = await StorageService.loadAppState()
-      
+
+      let appState = await StorageService.loadAppState();
+
       // Si está autenticado, cargar datos SOLO del servidor (no del storage)
       if (authenticated) {
         try {
-          // Cargar hábitos
-          const serverHabits = await HabitService.getAllHabits();
-          appState.habits = serverHabits;
-          
-          // Cargar completaciones
-          const habitIds = serverHabits.map(h => h.id);
-          if (habitIds.length > 0) {
-            const serverCompletions = await CompletionService.getAllCompletions(habitIds);
-            appState.completions = serverCompletions;
+          // Verificar que realmente tenemos tokens antes de cargar datos
+          const hasTokens = await SecureStorage.hasTokens();
+
+          if (!hasTokens) {
+            console.warn('Authentication check passed but no tokens found - session may have expired');
+            // Marcar como no autenticado
+            setIsAuthenticated(false);
+            setAuthUser(null);
+            // Limpiar datos
+            appState.habits = [];
+            appState.completions = [];
+            appState.challenges = StorageService.getDefaultAppState().challenges;
+            appState.lifeChallenges = StorageService.getDefaultAppState().lifeChallenges;
+            appState.user = StorageService.getDefaultAppState().user;
           } else {
+            // Cargar datos del usuario (vidas, XP, etc.) desde el backend
+            try {
+              const userData = await UserService.getMe();
+              appState.user = {
+                ...appState.user,
+                id: userData.id,
+                name: userData.name,
+                email: userData.email,
+                lives: userData.lives,
+                maxLives: userData.max_lives,
+                xp: userData.xp,
+                weeklyXp: userData.weekly_xp,
+                league: userData.league_tier,
+                leagueWeekStart: new Date(userData.league_week_start),
+              };
+            } catch (userError) {
+              console.error('Error loading user data:', userError);
+              // Si falla, usar datos por defecto
+            }
+
+            // Cargar hábitos
+            const serverHabits = await HabitService.getAllHabits();
+            appState.habits = serverHabits;
+
+            // Cargar completaciones
+            const habitIds = serverHabits.map(h => h.id);
+            if (habitIds.length > 0) {
+              const serverCompletions = await CompletionService.getAllCompletions(habitIds);
+              appState.completions = serverCompletions;
+            } else {
+              appState.completions = [];
+            }
+
+            // Cargar desafíos activos
+            const activeChallenges = await ChallengeService.getActiveChallenges();
+            appState = { ...appState, challenges: activeChallenges };
+
+            // Cargar desafíos de vida con progreso
+            const lifeChallenges = await LifeChallengeService.getLifeChallengesWithProgress();
+            appState.lifeChallenges = lifeChallenges;
+
+            // Cargar liga actual y weeklyXp (solo si está autenticado)
+            try {
+              const currentLeague = await LeagueService.getCurrentLeague();
+              if (currentLeague && currentLeague.league && currentLeague.competitors) {
+                appState.user.league = currentLeague.league.tier;
+
+                // Actualizar weeklyXp del usuario desde el backend
+                // Obtener el usuario autenticado para su ID
+                const authenticatedUser = await AuthService.getMe();
+                const userCompetitor = currentLeague.competitors.find(
+                  c => c.user_id === authenticatedUser.id
+                );
+                if (userCompetitor) {
+                  appState.user.weeklyXp = userCompetitor.weekly_xp;
+                }
+              }
+            } catch (leagueError) {
+              console.error('Error loading league data:', leagueError);
+              // No es crítico, continuar sin datos de liga
+            }
+          }
+        } catch (error: any) {
+          console.error('Error loading data from server:', error);
+
+          // Si el error es 401 o menciona falta de token, la sesión expiró
+          const isAuthError = error?.status === 401 ||
+                             error?.message?.includes('token') ||
+                             error?.message?.includes('No token provided');
+
+          if (isAuthError) {
+            console.warn('Session expired during data loading');
+            // El interceptor ya manejará esto, pero aseguramos datos limpios
+            setIsAuthenticated(false);
+            setAuthUser(null);
+            appState.habits = [];
+            appState.completions = [];
+            appState.challenges = StorageService.getDefaultAppState().challenges;
+            appState.lifeChallenges = StorageService.getDefaultAppState().lifeChallenges;
+            appState.user = StorageService.getDefaultAppState().user;
+          } else {
+            // Otro tipo de error: usar datos vacíos pero mantener autenticación
+            appState.habits = [];
             appState.completions = [];
           }
-          
-          // Cargar desafíos activos
-          const activeChallenges = await ChallengeService.getActiveChallenges();
-          appState = { ...appState, challenges: activeChallenges };
-          
-          // Cargar desafíos de vida con progreso
-          const lifeChallenges = await LifeChallengeService.getLifeChallengesWithProgress();
-          appState.lifeChallenges = lifeChallenges;
-          
-          // Cargar liga actual (solo si está autenticado)
-          // Nota: La pantalla de ligas usa datos locales generados,
-          // esto solo actualiza el tier si el servidor tiene información
-          const currentLeague = await LeagueService.getCurrentLeague();
-          if (currentLeague && currentLeague.league) {
-            // Actualizar datos de liga del usuario desde el servidor
-            appState.user.league = currentLeague.league.tier;
-            // Los competitors se manejan en la pantalla de ligas, no en el estado global
-          }
-        } catch (error) {
-          console.error('Error loading data from server:', error);
-          // Si falla, usar datos vacíos (no los del storage)
+        }
+      } else {
+        // Si NO está autenticado, asegurar que NO haya datos de usuario
+        // Esto es crítico para evitar que se muestren datos de sesiones anteriores
+        if (appState.habits.length > 0 || appState.completions.length > 0) {
           appState.habits = [];
           appState.completions = [];
-          // Mantener challenges y lifeChallenges por defecto si fallan
+          appState.challenges = StorageService.getDefaultAppState().challenges;
+          appState.lifeChallenges = StorageService.getDefaultAppState().lifeChallenges;
+          appState.user = StorageService.getDefaultAppState().user;
+
+          // Guardar el estado limpio
+          await StorageService.saveAppState(appState);
         }
       }
-      // Si NO está autenticado, usar datos del storage local
-      
+
       // Verificar y resetear semana de liga si es necesario
-      appState = await LeagueLogic.checkAndResetWeek(appState)
-      
-      // Verificar hábitos perdidos al cargar la app
-      appState = await HabitLogic.checkAndHandleMissedHabits(appState);
-      
+      appState = await LeagueLogic.checkAndResetWeek(appState);
+
+      // NOTA: La verificación de hábitos perdidos se maneja en el BACKEND
+      // mediante un cron job que ejecuta evaluateMissedHabits() diariamente.
+      // El frontend solo debe sincronizar los datos del servidor.
+      // NO verificar hábitos perdidos aquí para evitar duplicar penalizaciones.
+
       setState(appState);
     } catch (error) {
       console.error('Error loading app state:', error);
@@ -217,18 +348,27 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           notes,
           images
         );
-        
+
         // Obtener la completación recién creada
         const newCompletion = tempState.completions[tempState.completions.length - 1];
-        
+
         // Crear en el servidor
-        await CompletionService.createOrUpdateCompletion(habitId, newCompletion);
-        
+        const response = await CompletionService.createOrUpdateCompletion(habitId, newCompletion);
+
+        // Verificar si se obtuvieron Life Challenges
+        let lifeChallengesObtained = null;
+        if (response.new_life_challenges_obtained && response.new_life_challenges_obtained.length > 0) {
+          lifeChallengesObtained = response.new_life_challenges_obtained;
+
+          // Emitir evento para mostrar notificación
+          sessionEventEmitter.emit('LIFE_CHALLENGE_OBTAINED', lifeChallengesObtained);
+        }
+
         // Actualizar estado con los datos del servidor
-        // Por simplicidad, usamos los datos locales (el servidor devuelve similar)
         setState(tempState);
-        
-        // NO guardar en storage si está autenticado
+
+        // Retornar los Life Challenges obtenidos para que el componente pueda manejarlos
+        return { success: true, lifeChallengesObtained };
       } else {
         // Usuario local: guardar en storage
         const updatedState = await HabitLogic.markHabitCompleted(
@@ -240,6 +380,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         );
         setState(updatedState);
         await StorageService.saveAppState(updatedState);
+        return { success: true, lifeChallengesObtained: null };
       }
     } catch (error) {
       console.error('Error marking habit completed:', error);
@@ -437,11 +578,33 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   };
 
   const refreshState = async () => {
+    // Verificar autenticación antes de recargar
+    const authenticated = await checkAuthentication();
+
+    // Si el token no es válido, limpiar el estado
+    if (!authenticated && isAuthenticated) {
+      await handleSessionExpired();
+      return;
+    }
+
+    // Recargar el estado normalmente
     await loadAppState();
   };
 
   useEffect(() => {
     loadAppState();
+
+    // Escuchar eventos de sesión expirada
+    const handleSessionExpiredEvent = () => {
+      handleSessionExpired();
+    };
+
+    sessionEventEmitter.on(SESSION_EVENTS.SESSION_EXPIRED, handleSessionExpiredEvent);
+
+    // Limpiar el listener al desmontar
+    return () => {
+      sessionEventEmitter.off(SESSION_EVENTS.SESSION_EXPIRED, handleSessionExpiredEvent);
+    };
   }, []);
 
   const currentTheme = state.settings.theme;

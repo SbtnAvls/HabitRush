@@ -61,15 +61,26 @@ export class LifeChallengeMapper {
 }
 
 /**
+ * Interfaz extendida con estado del desafío para el usuario
+ */
+export interface LifeChallengeWithStatus extends LifeChallengeAPI {
+  status: 'pending' | 'obtained' | 'redeemed';
+  can_redeem: boolean;
+  obtained_at?: string;
+  redeemed_at?: string;
+}
+
+/**
  * Servicio para interactuar con la API de life challenges
  */
 export class LifeChallengeService {
   /**
-   * Obtiene la lista de desafíos de vida activos (pública, no requiere auth)
+   * Obtiene la lista de desafíos de vida activos
+   * Requiere autenticación para obtener el estado del usuario
    */
   static async getActiveLifeChallenges(): Promise<LifeChallenge[]> {
     try {
-      const response = await publicApiClient.get<LifeChallengeAPI[]>('/life-challenges');
+      const response = await apiClient.get<LifeChallengeAPI[]>('/life-challenges');
       console.log('Active life challenges:', response.data);
       return response.data.map(lc => LifeChallengeMapper.fromAPI(lc, 0));
     } catch (error: any) {
@@ -105,6 +116,20 @@ export class LifeChallengeService {
       return response.data;
     } catch (error: any) {
       console.error('Error getting life history:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene los life challenges con su estado actual (pending/obtained/redeemed)
+   * Este endpoint requiere autenticación y devuelve el estado específico del usuario
+   */
+  static async getLifeChallengesWithStatus(): Promise<LifeChallengeWithStatus[]> {
+    try {
+      const response = await apiClient.get<LifeChallengeWithStatus[]>('/life-challenges/status');
+      return response.data;
+    } catch (error: any) {
+      console.error('Error getting life challenges status:', error);
       throw error;
     }
   }

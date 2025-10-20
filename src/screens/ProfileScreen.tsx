@@ -5,12 +5,16 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useAppContext } from '../context/AppContext';
 import { HabitLogic } from '../services/habitLogic';
 import { AppHeader } from '../components/AppHeader';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { AuthModal } from '../components/AuthModal';
+import { useLeagueHistory } from '../hooks/useLeagueHistory';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 interface ProfileScreenProps {
   navigation?: any;
@@ -18,9 +22,11 @@ interface ProfileScreenProps {
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const styles = useThemedStyles(baseStyles);
-  const { state, isAuthenticated, authUser, logout, checkAuthentication } = useAppContext();
+  const { state, isAuthenticated, authUser, logout, refreshState } = useAppContext();
   const stats = HabitLogic.getUserStats(state);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const { data: leagueHistory, loading: historyLoading } = useLeagueHistory();
+  const { data: currentLeagueData } = useCurrentLeague();
 
   const handleLogout = () => {
     Alert.alert(
@@ -46,7 +52,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
   const handleAuthSuccess = async () => {
     setShowAuthModal(false);
-    await checkAuthentication();
+
+    // Recargar el estado completo después de autenticarse
+    await refreshState();
+
     Alert.alert('Éxito', '¡Bienvenido!');
   };
 
@@ -195,7 +204,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       {/* Retos completados */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Retos Completados</Text>
-        
+
         {state.user.completedChallenges.length === 0 ? (
           <Text style={styles.emptyText}>No has completado retos aún</Text>
         ) : (
@@ -204,6 +213,81 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           </Text>
         )}
       </View>
+
+      {/* Historial de Ligas */}
+      {isAuthenticated && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Historial de Ligas</Text>
+            {currentLeagueData?.league && (
+              <View style={[styles.currentLeagueBadge, { backgroundColor: currentLeagueData.league.color }]}>
+                <Text style={styles.currentLeagueBadgeText}>
+                  {currentLeagueData.league.name}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {historyLoading ? (
+            <View style={styles.historyLoadingContainer}>
+              <ActivityIndicator size="small" color="#4ECDC4" />
+              <Text style={styles.emptyText}>Cargando historial...</Text>
+            </View>
+          ) : leagueHistory.length === 0 ? (
+            <Text style={styles.emptyText}>
+              No tienes historial de ligas aún
+            </Text>
+          ) : (
+            <View style={styles.historyList}>
+              {leagueHistory.slice(0, 5).map((entry, index) => {
+                const changeIcon =
+                  entry.changeType === 'promoted' ? '⬆️' :
+                  entry.changeType === 'demoted' ? '⬇️' :
+                  entry.changeType === 'new' ? '🆕' : '➡️';
+
+                const changeColor =
+                  entry.changeType === 'promoted' ? '#4ECDC4' :
+                  entry.changeType === 'demoted' ? '#E74C3C' :
+                  entry.changeType === 'new' ? '#3498DB' : '#F39C12';
+
+                return (
+                  <View key={index} style={styles.historyItem}>
+                    <View style={styles.historyLeft}>
+                      <View style={[styles.changeIndicator, { backgroundColor: changeColor }]}>
+                        <Text style={styles.changeIcon}>{changeIcon}</Text>
+                      </View>
+                      <View style={styles.historyInfo}>
+                        <Text style={styles.historyLeague}>{entry.leagueName}</Text>
+                        <Text style={styles.historyDate}>
+                          {new Date(entry.weekStart).toLocaleDateString('es-ES', {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.historyRight}>
+                      <Text style={styles.historyPosition}>#{entry.position}</Text>
+                      <Text style={styles.historyXp}>{entry.weeklyXp} XP</Text>
+                    </View>
+                  </View>
+                );
+              })}
+              {leagueHistory.length > 5 && (
+                <TouchableOpacity
+                  style={styles.viewAllButton}
+                  onPress={() => navigation?.navigate('Leagues')}
+                >
+                  <Text style={styles.viewAllButtonText}>
+                    Ver todo el historial ({leagueHistory.length})
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color="#4ECDC4" />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Cuenta */}
       <View style={styles.section}>
@@ -477,6 +561,95 @@ const baseStyles = {
   footerText: {
     fontSize: 12,
     color: '#6C757D',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  currentLeagueBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  currentLeagueBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  historyLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 16,
+  },
+  historyList: {
+    gap: 12,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+  },
+  historyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  changeIndicator: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  changeIcon: {
+    fontSize: 16,
+  },
+  historyInfo: {
+    flex: 1,
+  },
+  historyLeague: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2C3E50',
+  },
+  historyDate: {
+    fontSize: 12,
+    color: '#6C757D',
+    marginTop: 2,
+  },
+  historyRight: {
+    alignItems: 'flex-end',
+  },
+  historyPosition: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2C3E50',
+  },
+  historyXp: {
+    fontSize: 12,
+    color: '#4ECDC4',
+    marginTop: 2,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  viewAllButtonText: {
+    fontSize: 14,
+    color: '#4ECDC4',
+    fontWeight: '600',
   },
 } as const;
 

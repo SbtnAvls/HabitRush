@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAppContext } from '../context/AppContext';
@@ -14,8 +15,14 @@ import { AddHabitModal } from '../components/AddHabitModal';
 import { CompleteHabitModal } from '../components/CompleteHabitModal';
 import { LifeChallengeCard } from '../components/LifeChallengeCard';
 import { AppHeader } from '../components/AppHeader';
+import { AuthModal } from '../components/AuthModal';
 import { HabitLogic } from '../services/habitLogic';
 import { Habit } from '../types';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import { LivesIndicator } from '../components/LivesIndicator';
+import { GameOverScreen } from './GameOverScreen';
+import { LifeChallengeNotification } from '../components/LifeChallengeNotification';
+import sessionEventEmitter from '../services/sessionEventEmitter';
 
 interface HomeScreenProps {
   navigation?: any;
@@ -23,12 +30,15 @@ interface HomeScreenProps {
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const styles = useThemedStyles(baseStyles);
-  const { state, markHabitCompleted, createHabit, refreshState, completeChallenge, activateHabit, redeemLifeChallenge } = useAppContext();
+  const { state, markHabitCompleted, createHabit, refreshState, completeChallenge, activateHabit, redeemLifeChallenge, isAuthenticated, authUser } = useAppContext();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showAllChallenges, setShowAllChallenges] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [lifeChallengeNotification, setLifeChallengeNotification] = useState<any>(null);
+  const { data: leagueData } = useCurrentLeague();
 
   // Separar hábitos activos e inactivos
   const activeHabits = state.habits.filter(h => h.activeByUser);
@@ -36,6 +46,29 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   // Verificar disponibilidad de retos
   const challengeAvailability = HabitLogic.getAvailableLifeChallenges(state);
+
+  // Escuchar eventos de Life Challenges obtenidos
+  useEffect(() => {
+    const handleLifeChallengeObtained = (challenges: any[]) => {
+      if (challenges && challenges.length > 0) {
+        setLifeChallengeNotification(challenges[0]);
+      }
+    };
+
+    sessionEventEmitter.on('LIFE_CHALLENGE_OBTAINED', handleLifeChallengeObtained);
+
+    return () => {
+      sessionEventEmitter.off('LIFE_CHALLENGE_OBTAINED', handleLifeChallengeObtained);
+    };
+  }, []);
+
+  // Verificar si el usuario no tiene vidas
+  const userHasNoLives = state.user.lives === 0;
+
+  // Si no tiene vidas, mostrar pantalla de Game Over
+  if (userHasNoLives) {
+    return <GameOverScreen />;
+  }
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -53,7 +86,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   const handleCompleteConfirm = async (progressData?: any, notes?: string, images?: string[]) => {
     if (selectedHabit) {
-      await markHabitCompleted(selectedHabit.id, progressData, notes, images);
+      const result = await markHabitCompleted(selectedHabit.id, progressData, notes, images);
+
+      // Si se obtuvieron Life Challenges, mostrar notificación
+      if (result.lifeChallengesObtained && result.lifeChallengesObtained.length > 0) {
+        setLifeChallengeNotification(result.lifeChallengesObtained[0]);
+      }
+
       setSelectedHabit(null);
     }
   };
@@ -67,6 +106,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     targetDate?: Date
   ) => {
     await createHabit(name, frequency, progressType, activeByUser, description, targetDate);
+  };
+
+  const handleAddHabitPress = () => {
+    if (!isAuthenticated) {
+      // Si no está autenticado, mostrar el modal de autenticación
+      setShowAuthModal(true);
+    } else {
+      // Si está autenticado, mostrar el modal de agregar hábito
+      setShowAddModal(true);
+    }
+  };
+
+  const handleAuthSuccess = async () => {
+    setShowAuthModal(false);
+    // Recargar el estado después de autenticar
+    await refreshState();
+    // Ahora sí abrir el modal de agregar hábito
+    setShowAddModal(true);
   };
 
   const handleActivateHabit = async (habitId: string) => {
@@ -118,67 +175,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader navigation={navigation} />
-      {/* Header con estadísticas */}
-      <View style={styles.header}>
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{stats.activeHabits}</Text>
-            <Text style={styles.statLabel}>Hábitos Activos</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{stats.completedToday}</Text>
-            <Text style={styles.statLabel}>Completados Hoy</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{stats.totalStreak}</Text>
-            <Text style={styles.statLabel}>Racha Total</Text>
-          </View>
-        </View>
 
-        {/* Vidas */}
-        <View style={styles.livesContainer}>
-          <Text style={styles.livesLabel}>Vidas</Text>
-          <View style={styles.livesDisplay}>
-            {Array.from({ length: stats.maxLives }, (_, index) => (
-              <Ionicons
-                key={index}
-                name={index < stats.lives ? 'heart' : 'heart-outline'}
-                size={18}
-                style={[
-                  styles.lifeHeart,
-                  index < stats.lives ? styles.lifeActive : styles.lifeInactive,
-                ]}
-              />
-            ))}
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.xpLeagueContainer}>
-        <View style={styles.xpSection}>
-          <View style={styles.sectionHeader}>
-            <Ionicons
-              name="flash-outline"
-              size={20}
-              style={[styles.sectionIcon, styles.xpIcon]}
-            />
-            <Text style={styles.xpLabel}>XP Total</Text>
-          </View>
-          <Text style={styles.xpValue}>{state.user.xp}</Text>
-        </View>
-        <View style={styles.leagueDivider} />
-        <View style={styles.leagueSection}>
-          <View style={styles.sectionHeader}>
-            <Ionicons
-              name="trophy-outline"
-              size={20}
-              style={[styles.sectionIcon, styles.leagueIcon]}
-            />
-            <Text style={styles.leagueLabel}>Liga Actual</Text>
-          </View>
-          <Text style={styles.leagueNumber}>Liga {state.user.league}</Text>
-        </View>
-      </View>
+      {/* Indicador de vidas */}
+      <LivesIndicator
+        currentLives={state.user.lives}
+        maxLives={state.user.maxLives}
+        onPress={() => navigation?.navigate('LifeChallenges')}
+      />
 
       {/* Lista de hábitos */}
       <ScrollView
@@ -187,6 +190,54 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {/* XP y Liga en la parte superior */}
+        <View style={styles.topInfoContainer}>
+          <View style={styles.xpLeagueCard}>
+            <View style={styles.xpSection}>
+              <View style={styles.sectionHeader}>
+                <Ionicons
+                  name="flash-outline"
+                  size={20}
+                  style={[styles.sectionIcon, styles.xpIcon]}
+                />
+                <Text style={styles.xpLabel}>XP Total</Text>
+              </View>
+              <Text style={styles.xpValue}>{state.user.xp}</Text>
+            </View>
+            <View style={styles.leagueDivider} />
+            <View style={styles.leagueSection}>
+              <View style={styles.sectionHeader}>
+                <Ionicons
+                  name="trophy-outline"
+                  size={20}
+                  style={[styles.sectionIcon, styles.leagueIcon]}
+                />
+                <Text style={styles.leagueLabel}>Liga Actual</Text>
+              </View>
+              {isAuthenticated && leagueData?.league ? (
+                <Text style={styles.leagueNumber}>{leagueData.league.name}</Text>
+              ) : (
+                <Text style={styles.leagueNumber}>-</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Estadísticas compactas */}
+          <View style={styles.compactStatsContainer}>
+            <View style={styles.compactStatItem}>
+              <Text style={styles.compactStatNumber}>{stats.activeHabits}</Text>
+              <Text style={styles.compactStatLabel}>Activos</Text>
+            </View>
+            <View style={styles.compactStatItem}>
+              <Text style={styles.compactStatNumber}>{stats.completedToday}</Text>
+              <Text style={styles.compactStatLabel}>Hoy</Text>
+            </View>
+            <View style={styles.compactStatItem}>
+              <Text style={styles.compactStatNumber}>{stats.totalStreak}</Text>
+              <Text style={styles.compactStatLabel}>Racha</Text>
+            </View>
+          </View>
+        </View>
         {state.habits.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyTitle}>No tienes hábitos aún</Text>
@@ -195,7 +246,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             </Text>
             <TouchableOpacity
               style={styles.createFirstButton}
-              onPress={() => setShowAddModal(true)}
+              onPress={handleAddHabitPress}
             >
               <Text style={styles.createFirstButtonText}>Crear mi primer hábito</Text>
             </TouchableOpacity>
@@ -313,10 +364,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       {/* Botón flotante para agregar hábito */}
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => setShowAddModal(true)}
+        onPress={handleAddHabitPress}
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
+
+      {/* Modal de autenticación */}
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
 
       {/* Modal para agregar hábito */}
       <AddHabitModal
@@ -335,6 +393,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         }}
         onComplete={handleCompleteConfirm}
       />
+
+      {/* Notificación de Life Challenge obtenido */}
+      {lifeChallengeNotification && (
+        <LifeChallengeNotification
+          visible={!!lifeChallengeNotification}
+          title={lifeChallengeNotification.title}
+          description={lifeChallengeNotification.description}
+          reward={lifeChallengeNotification.reward}
+          onDismiss={() => setLifeChallengeNotification(null)}
+          onPress={() => {
+            navigation?.navigate('LifeChallenges');
+            setLifeChallengeNotification(null);
+          }}
+        />
+      )}
     </View>
   );
 };
@@ -344,74 +417,16 @@ const baseStyles = {
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
-  header: {
-    backgroundColor: '#FFFFFF',
+  topInfoContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E9ECEF',
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: '#F8F9FA',
+  },
+  xpLeagueCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
-  },
-  statsContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'flex-start',
-    gap: 2,
-  },
-  statNumber: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#2C3E50',
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#6C757D',
-  },
-  livesContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
-    backgroundColor: '#FFFFFF',
-  },
-  livesLabel: {
-    fontSize: 14,
-    color: '#2C3E50',
-    marginRight: 10,
-    fontWeight: '600',
-  },
-  livesDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  lifeHeart: {
-    marginLeft: 0,
-  },
-  lifeActive: {
-    color: '#E74C3C',
-  },
-  lifeInactive: {
-    color: '#95A5A6',
-    opacity: 0.6,
-  },
-  xpLeagueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 16,
     padding: 16,
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
@@ -423,6 +438,7 @@ const baseStyles = {
     shadowRadius: 4,
     elevation: 2,
     gap: 16,
+    marginBottom: 12,
   },
   xpSection: {
     flex: 1,
@@ -473,6 +489,54 @@ const baseStyles = {
     fontSize: 20,
     fontWeight: '700',
     color: '#2C3E50',
+  },
+  compactStatsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  compactStatItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  compactStatNumber: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2C3E50',
+  },
+  compactStatLabel: {
+    fontSize: 10,
+    color: '#6C757D',
+    fontWeight: '500',
+  },
+  livesCompact: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  livesDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  lifeHeart: {
+    marginLeft: 0,
+  },
+  lifeActive: {
+    color: '#E74C3C',
+  },
+  lifeInactive: {
+    color: '#95A5A6',
+    opacity: 0.6,
   },
   listContainer: {
     paddingBottom: 80,

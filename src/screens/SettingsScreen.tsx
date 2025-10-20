@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAppContext } from '../context/AppContext';
 import { ThemePreference } from '../types';
@@ -59,6 +60,7 @@ const themeOptions: ThemeOption[] = [
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const { state, updateSettings } = useAppContext();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const scale = FONT_SCALE[state.settings.fontSize] ?? 1;
   const styles = useMemo(() => createStyles(theme, scale), [theme, scale]);
 
@@ -76,7 +78,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation?.goBack()}

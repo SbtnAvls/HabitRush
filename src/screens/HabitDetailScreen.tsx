@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppContext } from '../context/AppContext';
 import { Habit, HabitCompletion } from '../types';
 import { CompletionDetailItem } from '../components/CompletionDetailItem';
@@ -27,6 +28,7 @@ export const HabitDetailScreen: React.FC<any> = ({
   navigation,
 }) => {
   const styles = useThemedStyles(baseStyles);
+  const insets = useSafeAreaInsets();
   const { state, activateHabit, deactivateHabit } = useAppContext();
   const { habitId } = route?.params || {};
 
@@ -233,7 +235,7 @@ export const HabitDetailScreen: React.FC<any> = ({
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backText}>← Volver</Text>
         </TouchableOpacity>

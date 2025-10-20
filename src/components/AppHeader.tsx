@@ -7,26 +7,40 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FeatherIcon from 'react-native-vector-icons/Feather';
 import { useAppContext } from '../context/AppContext';
 import { useTheme } from '../theme/useTheme';
 import { useFontScale } from '../theme/useFontScale';
 import { AppTheme } from '../theme';
+import { AuthModal } from './AuthModal';
 
 interface AppHeaderProps {
   navigation?: any;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({ navigation }) => {
-  const { state } = useAppContext();
+  const { state, isAuthenticated, authUser, checkAuthentication, refreshState } = useAppContext();
   const theme = useTheme();
   const { scale } = useFontScale();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme, scale), [theme, scale]);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [authModalVisible, setAuthModalVisible] = useState(false);
 
   const handleSettingsPress = () => {
     setMenuVisible(false);
     navigation?.navigate('Settings');
+  };
+
+  const handleLoginPress = () => {
+    setAuthModalVisible(true);
+  };
+
+  const handleAuthSuccess = async () => {
+    setAuthModalVisible(false);
+    await checkAuthentication();
+    await refreshState();
   };
 
   const getUserInitials = (name: string): string => {
@@ -38,14 +52,22 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
       <View style={styles.leftSection}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>
-            {getUserInitials(state.user.name)}
-          </Text>
-        </View>
-        <Text style={styles.userName}>{state.user.name}</Text>
+        {isAuthenticated && authUser ? (
+          <>
+            <View style={styles.avatarContainer}>
+              <Text style={styles.avatarText}>
+                {getUserInitials(authUser.name)}
+              </Text>
+            </View>
+            <Text style={styles.userName}>{authUser.name}</Text>
+          </>
+        ) : (
+          <TouchableOpacity onPress={handleLoginPress}>
+            <Text style={styles.loginText}>Iniciar sesión/Registrarse</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.rightSection}>
@@ -68,7 +90,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ navigation }) => {
         onRequestClose={() => setMenuVisible(false)}
       >
         <Pressable
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, { paddingTop: insets.top + 60 }]}
           onPress={() => setMenuVisible(false)}
         >
           <View style={styles.menuContainer}>
@@ -87,6 +109,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ navigation }) => {
           </View>
         </Pressable>
       </Modal>
+
+      <AuthModal
+        visible={authModalVisible}
+        onClose={() => setAuthModalVisible(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
     </View>
   );
 };
@@ -127,6 +155,12 @@ const createStyles = (theme: AppTheme, scale: number) =>
       fontWeight: '600',
       color: theme.colors.textPrimary,
     },
+    loginText: {
+      fontSize: 16 * scale,
+      fontWeight: '600',
+      color: theme.colors.primary,
+      textDecorationLine: 'underline',
+    },
     rightSection: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -139,7 +173,6 @@ const createStyles = (theme: AppTheme, scale: number) =>
       backgroundColor: theme.colors.overlay,
       justifyContent: 'flex-start',
       alignItems: 'flex-end',
-      paddingTop: 60,
       paddingRight: 16,
     },
     menuContainer: {

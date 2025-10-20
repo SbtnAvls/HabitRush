@@ -12,6 +12,7 @@ import { HabitLogic } from '../services/habitLogic';
 import { useTheme } from '../theme/useTheme';
 import { useFontScale } from '../theme/useFontScale';
 import { AppTheme } from '../theme';
+import { useAppContext } from '../context/AppContext';
 
 interface HabitCardProps {
   habit: Habit;
@@ -32,6 +33,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   availableChallenges,
   completions,
 }) => {
+  const { activateHabit } = useAppContext()
   const theme = useTheme();
   const { scale } = useFontScale();
   const styles = useMemo(() => createStyles(theme, scale), [theme, scale]);
@@ -147,34 +149,8 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   };
 
   const handleReactivate = () => {
-    if (!isActive && availableChallenges.length > 0) {
-      const randomChallenge = HabitLogic.getRandomChallenges(availableChallenges, 1)[0];
-      Alert.alert(
-        'Reactivar habito',
-        `Para reactivar "${habit.name}" completa el reto:` +
-          `\n\n${randomChallenge.title}\n\n${randomChallenge.description}`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Completar reto',
-            onPress: () => {
-              Alert.alert(
-                'Reto completado',
-                'Has completado el reto?',
-                [
-                  { text: 'No', style: 'cancel' },
-                  {
-                    text: 'Si',
-                    onPress: () => onReactivate(habit.id),
-                  },
-                ]
-              );
-            },
-          },
-        ]
-      );
-    }
-  };
+    activateHabit(habit.id)
+  }
 
   const getStatusColor = () => {
     if (!isActive) return theme.colors.danger;
@@ -214,19 +190,19 @@ export const HabitCard: React.FC<HabitCardProps> = ({
       {renderWeekTimeline()}
 
       <View style={styles.actions}>
-        {isActive && shouldCompleteToday && !isCompletedToday && (
+        {habit.activeByUser && shouldCompleteToday && !isCompletedToday && (
           <TouchableOpacity style={styles.completeButton} onPress={handleComplete}>
             <Text style={styles.buttonText}>Completar</Text>
           </TouchableOpacity>
         )}
 
-        {!isActive && (
+        {!habit.activeByUser && (
           <TouchableOpacity style={styles.reactivateButton} onPress={handleReactivate}>
             <Text style={styles.buttonText}>Reactivar</Text>
           </TouchableOpacity>
         )}
 
-        {isActive && isCompletedToday && (
+        {habit.activeByUser && isCompletedToday && (
           <View style={styles.completedBadge}>
             <View style={styles.completedContainer}>
               <Ionicons name="checkmark-circle" size={16} color={theme.colors.textOnPrimary} />

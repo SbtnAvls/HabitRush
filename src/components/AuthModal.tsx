@@ -69,15 +69,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         password: password,
       };
 
-      await AuthService.login(credentials);
+      const response = await AuthService.login(credentials);
+      console.log(`Login successful, token expires in ${response.expiresIn} seconds`);
+
       Alert.alert('Éxito', '¡Bienvenido de nuevo!');
       resetForm();
       onAuthSuccess();
     } catch (error: any) {
-      Alert.alert(
-        'Error al iniciar sesión',
-        error.message || 'Hubo un problema al iniciar sesión. Por favor intenta de nuevo.'
-      );
+      // Manejar rate limiting
+      if (error?.status === 429 || error?.message?.includes('Demasiados intentos')) {
+        Alert.alert(
+          'Demasiados intentos',
+          'Por favor espera 15 minutos antes de intentar de nuevo.'
+        );
+      } else {
+        Alert.alert(
+          'Error al iniciar sesión',
+          error.message || 'Hubo un problema al iniciar sesión. Por favor intenta de nuevo.'
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -107,15 +117,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         password: password,
       };
 
-      await AuthService.register(credentials);
+      const response = await AuthService.register(credentials);
+      console.log(`Registration successful, token expires in ${response.expiresIn} seconds`);
+
       Alert.alert('Éxito', '¡Cuenta creada exitosamente!');
       resetForm();
       onAuthSuccess();
     } catch (error: any) {
-      Alert.alert(
-        'Error al registrarse',
-        error.message || 'Hubo un problema al crear tu cuenta. Por favor intenta de nuevo.'
-      );
+      // Manejar rate limiting
+      if (error?.status === 429 || error?.message?.includes('Demasiados intentos')) {
+        Alert.alert(
+          'Demasiados intentos',
+          'Por favor espera 15 minutos antes de intentar de nuevo.'
+        );
+      } else {
+        Alert.alert(
+          'Error al registrarse',
+          error.message || 'Hubo un problema al crear tu cuenta. Por favor intenta de nuevo.'
+        );
+      }
     } finally {
       setLoading(false);
     }

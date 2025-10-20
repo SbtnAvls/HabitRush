@@ -8,25 +8,29 @@ export class HabitLogic {
   static shouldCompleteToday(habit: Habit): boolean {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    return this.shouldCompleteTodayForDate(habit, today);
+  }
 
+  // Verificar si un hábito debe completarse en una fecha específica
+  static shouldCompleteTodayForDate(habit: Habit, date: Date): boolean {
     if (!habit.isActive) return false;
 
     switch (habit.frequency.type) {
       case 'daily':
         return true;
-      
+
       case 'weekly':
         if (habit.frequency.daysOfWeek) {
-          return habit.frequency.daysOfWeek.includes(today.getDay());
+          return habit.frequency.daysOfWeek.includes(date.getDay());
         }
         return false;
-      
+
       case 'custom':
         if (habit.frequency.daysOfWeek) {
-          return habit.frequency.daysOfWeek.includes(today.getDay());
+          return habit.frequency.daysOfWeek.includes(date.getDay());
         }
         return false;
-      
+
       default:
         return false;
     }
@@ -117,37 +121,45 @@ export class HabitLogic {
   static async checkAndHandleMissedHabits(state: AppState): Promise<AppState> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
     let updatedState = { ...state };
     let livesLost = 0;
 
     // Verificar cada hábito activo
     for (const habit of state.habits) {
-      if (!habit.isActive) continue;
+      // Solo verificar hábitos que están activos y activados por el usuario
+      if (!habit.isActive || !habit.activeByUser) continue;
 
-      const shouldComplete = this.shouldCompleteToday(habit);
-      const wasCompleted = this.wasCompletedToday(habit.id, state.completions);
+      // Verificar si AYER debía completarse (no HOY)
+      const shouldCompleteYesterday = this.shouldCompleteTodayForDate(habit, yesterday);
 
-      // Si debería completarse pero no se completó
-      if (shouldComplete && !wasCompleted) {
-        // Verificar si no se completó ayer tampoco (para no perder vida el mismo día)
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-
+      if (shouldCompleteYesterday) {
+        // Verificar si se completó ayer
         const wasCompletedYesterday = state.completions.some(completion =>
           completion.habitId === habit.id &&
           completion.date.getTime() === yesterday.getTime() &&
           completion.completed
         );
 
-        // Si no se completó ayer, perder vida y resetear racha
+        // Si no se completó ayer, verificar si ya se penalizó este fallo
         if (!wasCompletedYesterday) {
-          livesLost++;
-          
-          // Resetear racha del hábito
-          updatedState.habits = updatedState.habits.map(h => 
-            h.id === habit.id ? { ...h, currentStreak: 0, isActive: false } : h
-          );
+          // Solo penalizar si la última completación fue antes de ayer
+          // Esto evita penalizar múltiples veces por el mismo día fallido
+          const lastCompletedDate = habit.lastCompletedDate;
+          const shouldPenalize = !lastCompletedDate ||
+            lastCompletedDate.getTime() < yesterday.getTime();
+
+          if (shouldPenalize) {
+            livesLost++;
+
+            // Resetear racha del hábito y desactivarlo
+            updatedState.habits = updatedState.habits.map(h =>
+              h.id === habit.id ? { ...h, currentStreak: 0, isActive: false } : h
+            );
+          }
         }
       }
     }
@@ -300,7 +312,7 @@ export class HabitLogic {
             ...habit,
             activeByUser: false,
             currentStreak: 0,
-            lastCompletedDate: undefined,
+            lastCompletedDate: undefined
           }
         : habit
     );
@@ -329,8 +341,6 @@ export class HabitLogic {
   // Verificar todos los retos de vida disponibles
   static getAvailableLifeChallenges(state: AppState): Map<string, boolean> {
     const availabilityMap = new Map<string, boolean>();
-
-    console.log("state: ", state)
 
     if(state.lifeChallenges) for (const challenge of state.lifeChallenges) {
       const isAvailable = LifeChallengeVerifier.verifyChallenge(challenge, state);

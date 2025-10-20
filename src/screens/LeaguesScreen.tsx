@@ -3,19 +3,24 @@ import {
   View,
   Text,
   ScrollView,
+  ActivityIndicator,
+  RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { useAppContext } from '../context/AppContext';
 import { LeagueLogic } from '../services/leagueLogic';
 import { AppHeader } from '../components/AppHeader';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
-// Nombres de las ligas
-const LEAGUE_NAMES = {
-  1: { name: 'Liga Diamante', emoji: '💎', color: '#B9F2FF' },
-  2: { name: 'Liga Oro', emoji: '🥇', color: '#FFD700' },
-  3: { name: 'Liga Plata', emoji: '🥈', color: '#C0C0C0' },
-  4: { name: 'Liga Bronce', emoji: '🥉', color: '#CD7F32' },
-  5: { name: 'Liga Inicial', emoji: '🌱', color: '#90EE90' },
+// Nombres de las ligas según el backend
+const LEAGUE_EMOJIS: { [key: string]: string } = {
+  'Master': '💎',
+  'Diamond': '💠',
+  'Gold': '🥇',
+  'Silver': '🥈',
+  'Bronze': '🥉',
 };
 
 interface LeaguesScreenProps {
@@ -24,158 +29,220 @@ interface LeaguesScreenProps {
 
 export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
   const styles = useThemedStyles(baseStyles);
-  const { state } = useAppContext();
+  const { state, isAuthenticated, authUser } = useAppContext();
   const { user } = state;
+  const { data: leagueData, loading, error, refetch } = useCurrentLeague();
 
-  // Generar competidores simulados usando el servicio
-  const leagueCompetitors = useMemo(() => {
-    return LeagueLogic.generateCompetitors(
-      user.id,
-      user.name,
-      user.weeklyXp,
-      user.league
-    );
-  }, [user.id, user.name, user.weeklyXp, user.league]);
+  // Determinar el userId del usuario actual
+  const currentUserId = authUser?.id || user.id;
 
-  const userPosition = leagueCompetitors.find(c => c.id === user.id)?.position || 0;
-  const isTopThree = userPosition <= 3;
-  const currentLeague = LEAGUE_NAMES[user.league as keyof typeof LEAGUE_NAMES];
+  // Encontrar la posición del usuario actual
+  const userPosition = useMemo(() => {
+    if (!leagueData || !leagueData.competitors) return 0;
+    const userCompetitor = leagueData.competitors.find(c => c.user_id === currentUserId);
+    return userCompetitor?.position || 0;
+  }, [leagueData, currentUserId]);
+
+  const isTopFive = userPosition > 0 && userPosition <= 5;
+  const isBottomFive = userPosition >= 16 && userPosition <= 20;
+
+  // Obtener emoji de la liga
+  const getLeagueEmoji = (leagueName: string) => {
+    return LEAGUE_EMOJIS[leagueName] || '🏆';
+  };
 
   // Calcular días restantes hasta el fin de semana
   const daysUntilWeekEnd = useMemo(() => {
     return LeagueLogic.getDaysUntilWeekEnd(user.leagueWeekStart);
   }, [user.leagueWeekStart]);
 
+  // Estado de carga
+  if (loading && !leagueData) {
+    return (
+      <View style={styles.containerWrapper}>
+        <AppHeader navigation={navigation} />
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+          <Text style={styles.loadingText}>Cargando liga...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Usuario no autenticado
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.containerWrapper}>
+        <AppHeader navigation={navigation} />
+        <View style={styles.centerContainer}>
+          <Ionicons name="trophy-outline" size={80} color="#BDC3C7" />
+          <Text style={styles.emptyTitle}>Ligas no disponibles</Text>
+          <Text style={styles.emptySubtitle}>
+            Inicia sesión para competir en las ligas y enfrentarte a otros jugadores
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Sin liga activa
+  if (!leagueData || !leagueData.league || leagueData.competitors.length === 0) {
+    return (
+      <View style={styles.containerWrapper}>
+        <AppHeader navigation={navigation} />
+        <ScrollView
+          style={styles.container}
+          refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={refetch} />
+          }
+        >
+          <View style={styles.centerContainer}>
+            <Ionicons name="hourglass-outline" size={80} color="#BDC3C7" />
+            <Text style={styles.emptyTitle}>Sin liga activa</Text>
+            <Text style={styles.emptySubtitle}>
+              {leagueData?.message || 'Completa hábitos para ganar XP y unirte a la competencia'}
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={refetch}>
+              <Text style={styles.retryButtonText}>Actualizar</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.infoSection}>
+            <Text style={styles.infoTitle}>ℹ️ ¿Cómo funcionan las ligas?</Text>
+            <Text style={styles.infoText}>
+              • Compite contra 19 personas de tu mismo nivel{'\n'}
+              • Los 5 primeros de cada semana suben de liga{'\n'}
+              • Los 5 últimos bajan de liga{'\n'}
+              • Acumula XP completando tus hábitos{'\n'}
+              • El ranking se resetea cada lunes
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Con datos de liga
+  const { league, competitors } = leagueData;
+  const leagueEmoji = getLeagueEmoji(league.name);
+  const userWeeklyXp = competitors.find(c => c.user_id === currentUserId)?.weekly_xp || 0;
+
   return (
     <View style={styles.containerWrapper}>
       <AppHeader navigation={navigation} />
-      <ScrollView style={styles.container}>
+      <ScrollView
+        style={styles.container}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={refetch} />
+        }
+      >
         {/* Header con información de la liga actual */}
-        <View style={styles.header}>
-        <Text style={styles.headerTitle}>Tu Liga</Text>
-        <View style={styles.leagueInfo}>
-          <Text style={styles.leagueEmoji}>{currentLeague.emoji}</Text>
-          <Text style={styles.leagueName}>{currentLeague.name}</Text>
-        </View>
-        <View style={styles.xpContainer}>
-          <Text style={styles.xpLabel}>XP Total</Text>
-          <Text style={styles.xpValue}>{user.xp}</Text>
-        </View>
-        <View style={styles.weeklyXpContainer}>
-          <Text style={styles.weeklyXpLabel}>XP esta semana</Text>
-          <Text style={styles.weeklyXpValue}>{user.weeklyXp}</Text>
-        </View>
-        <Text style={styles.timeRemaining}>
-          ⏰ Termina en {daysUntilWeekEnd} {daysUntilWeekEnd === 1 ? 'día' : 'días'}
-        </Text>
-      </View>
-
-      {/* Información de promoción */}
-      {user.league > 1 && (
-        <View style={styles.promotionInfo}>
-          <Text style={styles.promotionTitle}>🎯 Objetivo Semanal</Text>
-          <Text style={styles.promotionText}>
-            Termina entre los 3 primeros para subir a{' '}
-            {LEAGUE_NAMES[(user.league - 1) as keyof typeof LEAGUE_NAMES].name}
-          </Text>
-          {isTopThree && (
-            <View style={styles.promotionBadge}>
-              <Text style={styles.promotionBadgeText}>
-                ¡Estás en zona de promoción! 🎉
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {user.league === 1 && (
-        <View style={styles.topLeagueInfo}>
-          <Text style={styles.topLeagueText}>
-            ¡Felicidades! Estás en la liga más alta 🏆
-          </Text>
-          <Text style={styles.topLeagueSubtext}>
-            Sigue acumulando XP para mantenerte entre los mejores
+        <View style={[styles.header, { backgroundColor: league.color + '20' }]}>
+          <Text style={styles.headerTitle}>Tu Liga</Text>
+          <View style={styles.leagueInfo}>
+            <Text style={styles.leagueEmoji}>{leagueEmoji}</Text>
+            <Text style={styles.leagueName}>{league.name}</Text>
+          </View>
+          <View style={styles.xpContainer}>
+            <Text style={styles.xpLabel}>XP Total</Text>
+            <Text style={styles.xpValue}>{user.xp}</Text>
+          </View>
+          <View style={styles.weeklyXpContainer}>
+            <Text style={styles.weeklyXpLabel}>XP esta semana</Text>
+            <Text style={styles.weeklyXpValue}>{userWeeklyXp}</Text>
+          </View>
+          <Text style={styles.timeRemaining}>
+            ⏰ Termina en {daysUntilWeekEnd} {daysUntilWeekEnd === 1 ? 'día' : 'días'}
           </Text>
         </View>
-      )}
 
-      {/* Ranking */}
-      <View style={styles.rankingContainer}>
-        <Text style={styles.rankingTitle}>Clasificación</Text>
-        {leagueCompetitors.map((competitor, index) => {
-          const isUser = competitor.id === user.id;
-          const isPromotion = index < 3;
-          
-          return (
-            <View
-              key={competitor.id}
-              style={[
-                styles.competitorCard,
-                isUser && styles.competitorCardUser,
-                isPromotion && styles.competitorCardPromotion,
-              ]}
-            >
-              <View style={styles.competitorLeft}>
-                <Text style={styles.competitorPosition}>
-                  {competitor.position}
+        {/* Información de promoción */}
+        {league.tier < 5 && (
+          <View style={styles.promotionInfo}>
+            <Text style={styles.promotionTitle}>🎯 Objetivo Semanal</Text>
+            <Text style={styles.promotionText}>
+              Termina entre los 5 primeros para subir de liga
+            </Text>
+            {isTopFive && (
+              <View style={styles.promotionBadge}>
+                <Text style={styles.promotionBadgeText}>
+                  ¡Estás en zona de promoción! 🎉
                 </Text>
-                {competitor.position === 1 && <Text style={styles.medal}>🥇</Text>}
-                {competitor.position === 2 && <Text style={styles.medal}>🥈</Text>}
-                {competitor.position === 3 && <Text style={styles.medal}>🥉</Text>}
-                <View style={styles.competitorInfo}>
-                  <Text style={[styles.competitorName, isUser && styles.textBold]}>
-                    {competitor.name}
-                    {isUser && ' (Tú)'}
+              </View>
+            )}
+            {isBottomFive && (
+              <View style={[styles.promotionBadge, { backgroundColor: '#E74C3C' }]}>
+                <Text style={styles.promotionBadgeText}>
+                  ⚠️ Zona de descenso - ¡esfuérzate más!
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {league.tier === 5 && (
+          <View style={styles.topLeagueInfo}>
+            <Text style={styles.topLeagueText}>
+              ¡Felicidades! Estás en la liga más alta 🏆
+            </Text>
+            <Text style={styles.topLeagueSubtext}>
+              Sigue acumulando XP para mantenerte entre los mejores
+            </Text>
+          </View>
+        )}
+
+        {/* Ranking */}
+        <View style={styles.rankingContainer}>
+          <Text style={styles.rankingTitle}>Clasificación</Text>
+          {competitors.map((competitor, index) => {
+            const isUser = competitor.user_id === currentUserId;
+            const isPromotion = competitor.position <= 5;
+            const isRelegation = competitor.position >= 16;
+
+            return (
+              <View
+                key={competitor.user_id || `bot-${index}`}
+                style={[
+                  styles.competitorCard,
+                  isUser && styles.competitorCardUser,
+                  isPromotion && league.tier < 5 && styles.competitorCardPromotion,
+                  isRelegation && league.tier > 1 && styles.competitorCardRelegation,
+                ]}
+              >
+                <View style={styles.competitorLeft}>
+                  <Text style={styles.competitorPosition}>
+                    {competitor.position}
+                  </Text>
+                  {competitor.position === 1 && <Text style={styles.medal}>🥇</Text>}
+                  {competitor.position === 2 && <Text style={styles.medal}>🥈</Text>}
+                  {competitor.position === 3 && <Text style={styles.medal}>🥉</Text>}
+                  <View style={styles.competitorInfo}>
+                    <Text style={[styles.competitorName, isUser && styles.textBold]}>
+                      {competitor.username}
+                      {isUser && ' (Tú)'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.competitorRight}>
+                  <Text style={[styles.competitorXp, isUser && styles.textBold]}>
+                    {competitor.weekly_xp} XP
                   </Text>
                 </View>
               </View>
-              <View style={styles.competitorRight}>
-                <Text style={[styles.competitorXp, isUser && styles.textBold]}>
-                  {competitor.weeklyXp} XP
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
+            );
+          })}
+        </View>
 
-      {/* Información adicional sobre las ligas */}
-      <View style={styles.leaguesInfoContainer}>
-        <Text style={styles.leaguesInfoTitle}>Todas las Ligas</Text>
-        {Object.entries(LEAGUE_NAMES).reverse().map(([level, league]) => {
-          const isCurrentLeague = parseInt(level) === user.league;
-          return (
-            <View
-              key={level}
-              style={[
-                styles.leagueItem,
-                isCurrentLeague && styles.leagueItemCurrent,
-              ]}
-            >
-              <Text style={styles.leagueItemEmoji}>{league.emoji}</Text>
-              <Text style={[styles.leagueItemName, isCurrentLeague && styles.textBold]}>
-                {league.name}
-              </Text>
-              {isCurrentLeague && (
-                <View style={styles.currentBadge}>
-                  <Text style={styles.currentBadgeText}>Actual</Text>
-                </View>
-              )}
-            </View>
-          );
-        })}
-      </View>
-
-      <View style={styles.infoSection}>
-        <Text style={styles.infoTitle}>ℹ️ ¿Cómo funcionan las ligas?</Text>
-        <Text style={styles.infoText}>
-          • Todos empiezan en la Liga Inicial (Liga 5){'\n'}
-          • Compite contra 19 personas de tu mismo nivel{'\n'}
-          • Los 3 primeros de cada semana suben de liga{'\n'}
-          • Acumula XP completando tus hábitos{'\n'}
-          • El ranking se resetea cada lunes
-        </Text>
-      </View>
+        <View style={styles.infoSection}>
+          <Text style={styles.infoTitle}>ℹ️ ¿Cómo funcionan las ligas?</Text>
+          <Text style={styles.infoText}>
+            • Compite contra 19 personas de tu mismo nivel{'\n'}
+            • Los 5 primeros de cada semana suben de liga{'\n'}
+            • Los 5 últimos bajan de liga{'\n'}
+            • Acumula XP completando tus hábitos{'\n'}
+            • El ranking se resetea cada lunes
+          </Text>
+        </View>
       </ScrollView>
     </View>
   );
@@ -188,6 +255,44 @@ const baseStyles = {
   },
   container: {
     flex: 1,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    minHeight: 400,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6C757D',
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2C3E50',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#6C757D',
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: '#4ECDC4',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   header: {
     backgroundColor: '#FFFFFF',
@@ -328,7 +433,11 @@ const baseStyles = {
   },
   competitorCardPromotion: {
     borderLeftWidth: 4,
-    borderLeftColor: '#FFD700',
+    borderLeftColor: '#4ECDC4',
+  },
+  competitorCardRelegation: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#E74C3C',
   },
   competitorLeft: {
     flexDirection: 'row',

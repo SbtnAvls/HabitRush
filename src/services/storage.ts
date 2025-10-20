@@ -31,57 +31,6 @@ const defaultSettings: Settings = {
   theme: 'light',
 };
 
-const defaultChallenges: Challenge[] = [
-  {
-    id: 'challenge_1',
-    title: 'Hacer 20 flexiones',
-    description: 'Completa 20 flexiones para reactivar tu hábito',
-    difficulty: 'easy',
-    type: 'exercise',
-    estimatedTime: 5,
-  },
-  {
-    id: 'challenge_2',
-    title: 'Leer por 15 minutos',
-    description: 'Dedica 15 minutos a leer algo nuevo',
-    difficulty: 'easy',
-    type: 'learning',
-    estimatedTime: 15,
-  },
-  {
-    id: 'challenge_3',
-    title: 'Meditar 10 minutos',
-    description: 'Practica meditación por 10 minutos',
-    difficulty: 'easy',
-    type: 'mindfulness',
-    estimatedTime: 10,
-  },
-  {
-    id: 'challenge_4',
-    title: 'Hacer 30 sentadillas',
-    description: 'Completa 30 sentadillas para reactivar tu hábito',
-    difficulty: 'medium',
-    type: 'exercise',
-    estimatedTime: 8,
-  },
-  {
-    id: 'challenge_5',
-    title: 'Escribir un poema',
-    description: 'Escribe un poema corto sobre tus metas',
-    difficulty: 'medium',
-    type: 'creative',
-    estimatedTime: 20,
-  },
-  {
-    id: 'challenge_6',
-    title: 'Hacer 50 saltos',
-    description: 'Completa 50 saltos para reactivar tu hábito',
-    difficulty: 'hard',
-    type: 'exercise',
-    estimatedTime: 10,
-  },
-];
-
 export class StorageService {
   // Guardar estado completo de la app
   static async saveAppState(state: AppState): Promise<void> {
@@ -144,7 +93,7 @@ export class StorageService {
       habits: [],
       user: defaultUser,
       completions: [],
-      challenges: defaultChallenges,
+      challenges: [], // Los challenges vienen del backend cuando el usuario está autenticado
       lifeChallenges: LIFE_CHALLENGES.map(lc => ({ ...lc })),
       settings: { ...defaultSettings },
     };
