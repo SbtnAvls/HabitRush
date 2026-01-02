@@ -22,6 +22,8 @@ import { useCurrentLeague } from '../hooks/useCurrentLeague';
 import { LivesIndicator } from '../components/LivesIndicator';
 import { GameOverScreen } from './GameOverScreen';
 import { LifeChallengeNotification } from '../components/LifeChallengeNotification';
+import { LeagueChangeNotification } from '../components/LeagueChangeNotification';
+import { useLeagueChangeDetection } from '../hooks/useLeagueChangeDetection';
 import sessionEventEmitter from '../services/sessionEventEmitter';
 
 interface HomeScreenProps {
@@ -39,6 +41,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [lifeChallengeNotification, setLifeChallengeNotification] = useState<any>(null);
   const { data: leagueData } = useCurrentLeague();
+  const { pendingChange: leagueChange, dismissChange: dismissLeagueChange } = useLeagueChangeDetection();
 
   // Separar hábitos activos e inactivos
   const activeHabits = state.habits.filter(h => h.activeByUser);
@@ -408,6 +411,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           }}
         />
       )}
+
+      {/* Notificación de cambio de liga */}
+      <LeagueChangeNotification
+        visible={!!leagueChange}
+        changeType={leagueChange?.changeType || 'stayed'}
+        toLeague={leagueChange?.toLeague || ''}
+        position={leagueChange?.position || 0}
+        weeklyXp={leagueChange?.weeklyXp || 0}
+        onDismiss={dismissLeagueChange}
+      />
     </View>
   );
 };

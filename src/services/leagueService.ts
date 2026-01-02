@@ -4,25 +4,20 @@ import apiClient from './apiClient';
  * Interfaz de liga según la API del backend
  */
 export interface LeagueAPI {
-  id: string;
+  id: number;
   name: string;
-  color: string;
-  tier: number;
-  min_xp_required: number;
-  promotion_slots: number;
-  demotion_slots: number;
-  created_at: string;
-  updated_at: string;
+  colorHex: string;
 }
 
 /**
  * Interfaz de competidor en la liga
  */
 export interface LeagueCompetitorAPI {
-  user_id: string;
-  username: string;
-  weekly_xp: number;
+  userId: string;
+  name: string;
+  weeklyXp: number;
   position: number;
+  isReal: boolean;
 }
 
 /**
@@ -31,7 +26,7 @@ export interface LeagueCompetitorAPI {
 export interface CurrentLeagueResponse {
   league?: LeagueAPI;
   competitors: LeagueCompetitorAPI[];
-  message?: string; // "User not found in any league for the current week."
+  message?: string;
 }
 
 /**
@@ -40,7 +35,7 @@ export interface CurrentLeagueResponse {
 export interface LeagueHistoryAPI {
   weeklyXp: number;
   position: number;
-  changeType: 'promoted' | 'demoted' | 'stayed' | 'new';
+  changeType: 'promoted' | 'relegated' | 'stayed';
   leagueName: string;
   leagueColor: string;
   weekStart: string;
@@ -57,23 +52,21 @@ export class LeagueMapper {
     return {
       id: leagueAPI.id,
       name: leagueAPI.name,
-      color: leagueAPI.color,
-      tier: leagueAPI.tier,
-      minXpRequired: leagueAPI.min_xp_required,
-      promotionSlots: leagueAPI.promotion_slots,
-      demotionSlots: leagueAPI.demotion_slots,
+      color: leagueAPI.colorHex,
     };
   }
 
   /**
    * Convierte LeagueCompetitorAPI a formato local
+   * La API ya devuelve camelCase, así que solo pasamos los datos
    */
   static competitorFromAPI(competitorAPI: LeagueCompetitorAPI) {
     return {
-      userId: competitorAPI.user_id,
-      username: competitorAPI.username,
-      weeklyXp: competitorAPI.weekly_xp,
+      userId: competitorAPI.userId,
+      name: competitorAPI.name,
+      weeklyXp: competitorAPI.weeklyXp,
       position: competitorAPI.position,
+      isReal: competitorAPI.isReal,
     };
   }
 

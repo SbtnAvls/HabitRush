@@ -220,7 +220,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Historial de Ligas</Text>
             {currentLeagueData?.league && (
-              <View style={[styles.currentLeagueBadge, { backgroundColor: currentLeagueData.league.color }]}>
+              <View style={[styles.currentLeagueBadge, { backgroundColor: currentLeagueData.league.colorHex }]}>
                 <Text style={styles.currentLeagueBadgeText}>
                   {currentLeagueData.league.name}
                 </Text>
@@ -242,13 +242,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               {leagueHistory.slice(0, 5).map((entry, index) => {
                 const changeIcon =
                   entry.changeType === 'promoted' ? '⬆️' :
-                  entry.changeType === 'demoted' ? '⬇️' :
-                  entry.changeType === 'new' ? '🆕' : '➡️';
+                  entry.changeType === 'relegated' ? '⬇️' : '➡️';
 
                 const changeColor =
                   entry.changeType === 'promoted' ? '#4ECDC4' :
-                  entry.changeType === 'demoted' ? '#E74C3C' :
-                  entry.changeType === 'new' ? '#3498DB' : '#F39C12';
+                  entry.changeType === 'relegated' ? '#E74C3C' : '#F39C12';
 
                 return (
                   <View key={index} style={styles.historyItem}>

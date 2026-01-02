@@ -260,16 +260,20 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             try {
               const currentLeague = await LeagueService.getCurrentLeague();
               if (currentLeague && currentLeague.league && currentLeague.competitors) {
-                appState.user.league = currentLeague.league.tier;
+                // Mapear nombre de liga a tier
+                const LEAGUE_TIERS: { [key: string]: number } = {
+                  'Bronze': 1, 'Silver': 2, 'Gold': 3, 'Diamond': 4, 'Master': 5,
+                };
+                appState.user.league = LEAGUE_TIERS[currentLeague.league.name] || 1;
 
                 // Actualizar weeklyXp del usuario desde el backend
                 // Obtener el usuario autenticado para su ID
                 const authenticatedUser = await AuthService.getMe();
                 const userCompetitor = currentLeague.competitors.find(
-                  c => c.user_id === authenticatedUser.id
+                  c => c.userId === authenticatedUser.id
                 );
                 if (userCompetitor) {
-                  appState.user.weeklyXp = userCompetitor.weekly_xp;
+                  appState.user.weeklyXp = userCompetitor.weeklyXp;
                 }
               }
             } catch (leagueError) {

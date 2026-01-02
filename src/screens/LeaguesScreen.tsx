@@ -23,6 +23,17 @@ const LEAGUE_EMOJIS: { [key: string]: string } = {
   'Bronze': '🥉',
 };
 
+// Tiers de las ligas (para lógica de promoción/descenso)
+const LEAGUE_TIERS: { [key: string]: number } = {
+  'Bronze': 1,
+  'Silver': 2,
+  'Gold': 3,
+  'Diamond': 4,
+  'Master': 5,
+};
+
+const getLeagueTier = (leagueName: string): number => LEAGUE_TIERS[leagueName] || 1;
+
 interface LeaguesScreenProps {
   navigation?: any;
 }
@@ -39,7 +50,7 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
   // Encontrar la posición del usuario actual
   const userPosition = useMemo(() => {
     if (!leagueData || !leagueData.competitors) return 0;
-    const userCompetitor = leagueData.competitors.find(c => c.user_id === currentUserId);
+    const userCompetitor = leagueData.competitors.find(c => c.userId === currentUserId);
     return userCompetitor?.position || 0;
   }, [leagueData, currentUserId]);
 
@@ -125,7 +136,7 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
   // Con datos de liga
   const { league, competitors } = leagueData;
   const leagueEmoji = getLeagueEmoji(league.name);
-  const userWeeklyXp = competitors.find(c => c.user_id === currentUserId)?.weekly_xp || 0;
+  const userWeeklyXp = competitors.find(c => c.userId === currentUserId)?.weeklyXp || 0;
 
   return (
     <View style={styles.containerWrapper}>
@@ -137,11 +148,13 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
         }
       >
         {/* Header con información de la liga actual */}
-        <View style={[styles.header, { backgroundColor: league.color + '20' }]}>
+        <View style={[styles.header, { backgroundColor: league.colorHex + '20' }]}>
           <Text style={styles.headerTitle}>Tu Liga</Text>
           <View style={styles.leagueInfo}>
             <Text style={styles.leagueEmoji}>{leagueEmoji}</Text>
-            <Text style={styles.leagueName}>{league.name}</Text>
+            <View style={[styles.leagueBadge, { backgroundColor: league.colorHex }]}>
+              <Text style={styles.leagueBadgeText}>{league.name}</Text>
+            </View>
           </View>
           <View style={styles.xpContainer}>
             <Text style={styles.xpLabel}>XP Total</Text>
@@ -157,7 +170,7 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
         </View>
 
         {/* Información de promoción */}
-        {league.tier < 5 && (
+        {getLeagueTier(league.name) < 5 && (
           <View style={styles.promotionInfo}>
             <Text style={styles.promotionTitle}>🎯 Objetivo Semanal</Text>
             <Text style={styles.promotionText}>
@@ -180,7 +193,7 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
           </View>
         )}
 
-        {league.tier === 5 && (
+        {getLeagueTier(league.name) === 5 && (
           <View style={styles.topLeagueInfo}>
             <Text style={styles.topLeagueText}>
               ¡Felicidades! Estás en la liga más alta 🏆
@@ -195,18 +208,19 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
         <View style={styles.rankingContainer}>
           <Text style={styles.rankingTitle}>Clasificación</Text>
           {competitors.map((competitor, index) => {
-            const isUser = competitor.user_id === currentUserId;
+            const isUser = competitor.userId === currentUserId;
             const isPromotion = competitor.position <= 5;
             const isRelegation = competitor.position >= 16;
+            const leagueTier = getLeagueTier(league.name);
 
             return (
               <View
-                key={competitor.user_id || `bot-${index}`}
+                key={competitor.userId || `bot-${index}`}
                 style={[
                   styles.competitorCard,
                   isUser && styles.competitorCardUser,
-                  isPromotion && league.tier < 5 && styles.competitorCardPromotion,
-                  isRelegation && league.tier > 1 && styles.competitorCardRelegation,
+                  isPromotion && leagueTier < 5 && styles.competitorCardPromotion,
+                  isRelegation && leagueTier > 1 && styles.competitorCardRelegation,
                 ]}
               >
                 <View style={styles.competitorLeft}>
@@ -218,14 +232,14 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
                   {competitor.position === 3 && <Text style={styles.medal}>🥉</Text>}
                   <View style={styles.competitorInfo}>
                     <Text style={[styles.competitorName, isUser && styles.textBold]}>
-                      {competitor.username}
+                      {competitor.name}
                       {isUser && ' (Tú)'}
                     </Text>
                   </View>
                 </View>
                 <View style={styles.competitorRight}>
                   <Text style={[styles.competitorXp, isUser && styles.textBold]}>
-                    {competitor.weekly_xp} XP
+                    {competitor.weeklyXp} XP
                   </Text>
                 </View>
               </View>
@@ -318,6 +332,19 @@ const baseStyles = {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#212529',
+  },
+  leagueBadge: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  leagueBadgeText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   xpContainer: {
     alignItems: 'center',
