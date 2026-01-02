@@ -40,19 +40,16 @@ interface LeaguesScreenProps {
 
 export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
   const styles = useThemedStyles(baseStyles);
-  const { state, isAuthenticated, authUser } = useAppContext();
+  const { state, isAuthenticated } = useAppContext();
   const { user } = state;
   const { data: leagueData, loading, error, refetch } = useCurrentLeague();
 
-  // Determinar el userId del usuario actual
-  const currentUserId = authUser?.id || user.id;
-
-  // Encontrar la posición del usuario actual
+  // Encontrar la posición del usuario actual usando isCurrentUser del backend
   const userPosition = useMemo(() => {
     if (!leagueData || !leagueData.competitors) return 0;
-    const userCompetitor = leagueData.competitors.find(c => c.userId === currentUserId);
+    const userCompetitor = leagueData.competitors.find(c => c.isCurrentUser);
     return userCompetitor?.position || 0;
-  }, [leagueData, currentUserId]);
+  }, [leagueData]);
 
   const isTopFive = userPosition > 0 && userPosition <= 5;
   const isBottomFive = userPosition >= 16 && userPosition <= 20;
@@ -136,7 +133,7 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
   // Con datos de liga
   const { league, competitors } = leagueData;
   const leagueEmoji = getLeagueEmoji(league.name);
-  const userWeeklyXp = competitors.find(c => c.userId === currentUserId)?.weeklyXp || 0;
+  const userWeeklyXp = competitors.find(c => c.isCurrentUser)?.weeklyXp || 0;
 
   return (
     <View style={styles.containerWrapper}>
@@ -208,7 +205,7 @@ export const LeaguesScreen: React.FC<LeaguesScreenProps> = ({ navigation }) => {
         <View style={styles.rankingContainer}>
           <Text style={styles.rankingTitle}>Clasificación</Text>
           {competitors.map((competitor, index) => {
-            const isUser = competitor.userId === currentUserId;
+            const isUser = competitor.isCurrentUser;
             const isPromotion = competitor.position <= 5;
             const isRelegation = competitor.position >= 16;
             const leagueTier = getLeagueTier(league.name);

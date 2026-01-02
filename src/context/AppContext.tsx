@@ -267,11 +267,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 appState.user.league = LEAGUE_TIERS[currentLeague.league.name] || 1;
 
                 // Actualizar weeklyXp del usuario desde el backend
-                // Obtener el usuario autenticado para su ID
-                const authenticatedUser = await AuthService.getMe();
-                const userCompetitor = currentLeague.competitors.find(
-                  c => c.userId === authenticatedUser.id
-                );
+                const userCompetitor = currentLeague.competitors.find(c => c.isCurrentUser);
                 if (userCompetitor) {
                   appState.user.weeklyXp = userCompetitor.weeklyXp;
                 }

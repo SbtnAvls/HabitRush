@@ -18,6 +18,7 @@ export interface LeagueCompetitorAPI {
   weeklyXp: number;
   position: number;
   isReal: boolean;
+  isCurrentUser: boolean;
 }
 
 /**
@@ -67,6 +68,7 @@ export class LeagueMapper {
       weeklyXp: competitorAPI.weeklyXp,
       position: competitorAPI.position,
       isReal: competitorAPI.isReal,
+      isCurrentUser: competitorAPI.isCurrentUser,
     };
   }
 
