@@ -295,6 +295,14 @@ export class AuthService {
         sessionEventEmitter.emit(SESSION_EVENTS.SESSION_EXPIRED);
       }
 
+      // Rate limiting en refresh (10 intentos por 15 minutos)
+      if (error.status === 429) {
+        sessionEventEmitter.emit(SESSION_EVENTS.RATE_LIMITED, {
+          endpoint: '/auth/refresh',
+          retryAfter: 15 * 60
+        });
+      }
+
       return false;
     }
   }

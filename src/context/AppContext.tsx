@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { Alert } from 'react-native';
 import { AppState, Settings, ThemePreference, AuthUser, User } from '../types';
 import { StorageService } from '../services/storage';
 import { SecureStorage } from '../services/secureStorage';
@@ -599,11 +600,23 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       handleSessionExpired();
     };
 
-    sessionEventEmitter.on(SESSION_EVENTS.SESSION_EXPIRED, handleSessionExpiredEvent);
+    // Escuchar eventos de rate limiting
+    const handleRateLimitedEvent = (data: { endpoint: string; retryAfter: number }) => {
+      const minutes = Math.ceil(data.retryAfter / 60);
+      Alert.alert(
+        'Demasiadas solicitudes',
+        `Has excedido el límite de solicitudes. Por favor espera ${minutes} minutos antes de intentar de nuevo.`,
+        [{ text: 'Entendido', style: 'default' }]
+      );
+    };
 
-    // Limpiar el listener al desmontar
+    sessionEventEmitter.on(SESSION_EVENTS.SESSION_EXPIRED, handleSessionExpiredEvent);
+    sessionEventEmitter.on(SESSION_EVENTS.RATE_LIMITED, handleRateLimitedEvent);
+
+    // Limpiar los listeners al desmontar
     return () => {
       sessionEventEmitter.off(SESSION_EVENTS.SESSION_EXPIRED, handleSessionExpiredEvent);
+      sessionEventEmitter.off(SESSION_EVENTS.RATE_LIMITED, handleRateLimitedEvent);
     };
   }, []);
 

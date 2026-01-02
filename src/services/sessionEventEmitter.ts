@@ -81,6 +81,7 @@ export const SESSION_EVENTS = {
   LOGOUT: 'logout',
   LOGIN_SUCCESS: 'login:success',
   TOKEN_INVALID: 'token:invalid',
+  RATE_LIMITED: 'rate:limited',
 } as const;
 
 export default sessionEventEmitter;

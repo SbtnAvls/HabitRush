@@ -79,12 +79,22 @@ const refreshAccessToken = async (): Promise<{ accessToken: string; refreshToken
   } catch (error: any) {
     console.error('Error refreshing token:', error?.response?.data || error?.message);
 
+    const status = error?.response?.status;
+
     // Si el refresh token es inválido o expirado
-    if (error?.response?.status === 401 || error?.response?.status === 403) {
+    if (status === 401 || status === 403) {
       // Limpiar tokens y emitir evento de sesión expirada
       await SecureStorage.clearTokens();
       sessionEventEmitter.emit(SESSION_EVENTS.TOKEN_INVALID);
       sessionEventEmitter.emit(SESSION_EVENTS.SESSION_EXPIRED);
+    }
+
+    // Rate limiting en refresh (10 intentos por 15 minutos)
+    if (status === 429) {
+      sessionEventEmitter.emit(SESSION_EVENTS.RATE_LIMITED, {
+        endpoint: '/auth/refresh',
+        retryAfter: 15 * 60 // 15 minutos en segundos
+      });
     }
 
     return null;
