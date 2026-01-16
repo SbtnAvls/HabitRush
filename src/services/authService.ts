@@ -1,6 +1,9 @@
+import { Platform } from 'react-native';
 import apiClient, { publicApiClient, checkTokenMigration } from './apiClient';
 import { SecureStorage } from './secureStorage';
 import sessionEventEmitter, { SESSION_EVENTS } from './sessionEventEmitter';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { GOOGLE_CONFIG } from '../config/google';
 
 /**
  * Servicio de Autenticación con soporte de Refresh Tokens
@@ -134,6 +137,9 @@ export class AuthService {
           // Continuar con limpieza local aunque falle el servidor
         }
       }
+
+      // También cerrar sesión de Google si estaba logueado con Google
+      await this.signOutGoogle();
     } catch (error) {
       console.error('Error during logout:', error);
     } finally {
@@ -315,6 +321,91 @@ export class AuthService {
       await SecureStorage.clearTokens();
     } catch (error) {
       console.error('Error clearing auth data:', error);
+    }
+  }
+
+  /**
+   * Configurar Google Sign-In
+   * Debe llamarse una vez al iniciar la app
+   */
+  static configureGoogleSignIn(): void {
+    GoogleSignin.configure({
+      webClientId: GOOGLE_CONFIG.webClientId,
+      iosClientId: Platform.OS === 'ios' ? GOOGLE_CONFIG.iosClientId : undefined,
+      offlineAccess: false,
+    });
+  }
+
+  /**
+   * Iniciar sesión con Google
+   */
+  static async loginWithGoogle(): Promise<AuthResponse> {
+    try {
+      // Verificar que Google Play Services esté disponible (Android)
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+      // Realizar el sign-in con Google
+      const signInResult = await GoogleSignin.signIn();
+
+      // Obtener el ID token
+      const idToken = signInResult.data?.idToken;
+
+      if (!idToken) {
+        throw new Error('No se pudo obtener el token de Google');
+      }
+
+      // Enviar el token al backend para autenticación
+      const response = await publicApiClient.post<AuthResponse>('/auth/google', {
+        idToken,
+      });
+
+      const data = response.data;
+
+      // Guardar tokens de forma segura
+      await SecureStorage.setTokens(data.accessToken, data.refreshToken, data.expiresIn);
+
+      // Emitir evento de login exitoso
+      sessionEventEmitter.emit(SESSION_EVENTS.LOGIN_SUCCESS);
+
+      return data;
+    } catch (error: any) {
+      // Manejar errores específicos de Google Sign-In
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        throw new Error('Inicio de sesión cancelado');
+      }
+      if (error.code === statusCodes.IN_PROGRESS) {
+        throw new Error('Ya hay un inicio de sesión en progreso');
+      }
+      if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        throw new Error('Google Play Services no está disponible');
+      }
+
+      // Manejar errores del backend
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+
+      // Manejar rate limiting
+      if (error.status === 429) {
+        throw new Error('Demasiados intentos. Por favor espera 15 minutos.');
+      }
+
+      console.error('Error en Google Sign-In:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cerrar sesión de Google (además del logout normal)
+   */
+  static async signOutGoogle(): Promise<void> {
+    try {
+      const isSignedIn = await GoogleSignin.getCurrentUser();
+      if (isSignedIn) {
+        await GoogleSignin.signOut();
+      }
+    } catch (error) {
+      console.error('Error signing out from Google:', error);
     }
   }
 }

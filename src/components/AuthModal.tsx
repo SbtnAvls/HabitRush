@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -28,11 +28,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const styles = useThemedStyles(baseStyles);
   const [mode, setMode] = useState<AuthMode>('login');
   const [loading, setLoading] = useState(false);
-  
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const isMountedRef = useRef(true);
+
   // Campos del formulario
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Resetear el ref cuando el modal se abre
+  useEffect(() => {
+    if (visible) {
+      isMountedRef.current = true;
+    }
+  }, [visible]);
 
   const resetForm = () => {
     setName('');
@@ -42,6 +51,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   const handleClose = () => {
+    isMountedRef.current = false;
     resetForm();
     onClose();
   };
@@ -149,6 +159,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      const response = await AuthService.loginWithGoogle();
+      console.log(`Google login successful, token expires in ${response.expiresIn} seconds`);
+
+      // Evitar actualizar estado si el componente se desmontó
+      if (!isMountedRef.current) return;
+
+      Alert.alert('Éxito', '¡Bienvenido!');
+      resetForm();
+      onAuthSuccess();
+    } catch (error: any) {
+      // Evitar actualizar estado si el componente se desmontó
+      if (!isMountedRef.current) return;
+
+      // No mostrar alerta si el usuario canceló
+      if (error.message === 'Inicio de sesión cancelado') {
+        return;
+      }
+
+      Alert.alert(
+        'Error con Google',
+        error.message || 'No se pudo iniciar sesión con Google. Por favor intenta de nuevo.'
+      );
+    } finally {
+      if (isMountedRef.current) {
+        setGoogleLoading(false);
+      }
+    }
+  };
+
   const toggleMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
   };
@@ -223,7 +265,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <TouchableOpacity
               style={[styles.submitButton, loading && styles.submitButtonDisabled]}
               onPress={handleSubmit}
-              disabled={loading}
+              disabled={loading || googleLoading}
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
@@ -234,14 +276,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               )}
             </TouchableOpacity>
 
+            <View style={styles.dividerContainer}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>o</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.googleButton, googleLoading && styles.submitButtonDisabled]}
+              onPress={handleGoogleSignIn}
+              disabled={loading || googleLoading}
+            >
+              {googleLoading ? (
+                <ActivityIndicator color="#757575" />
+              ) : (
+                <>
+                  <Text style={styles.googleIcon}>G</Text>
+                  <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
             <View style={styles.toggleContainer}>
               <Text style={styles.toggleText}>
                 {mode === 'login'
                   ? '¿No tienes cuenta?'
                   : '¿Ya tienes cuenta?'}
               </Text>
-              <TouchableOpacity onPress={toggleMode} disabled={loading}>
-                <Text style={styles.toggleLink}>
+              <TouchableOpacity onPress={toggleMode} disabled={loading || googleLoading}>
+                <Text style={[styles.toggleLink, (loading || googleLoading) && styles.disabledText]}>
                   {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}
                 </Text>
               </TouchableOpacity>
@@ -250,7 +313,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={handleClose}
-              disabled={loading}
+              disabled={loading || googleLoading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -330,6 +393,44 @@ const baseStyles = {
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E9ECEF',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 14,
+    color: '#6C757D',
+  },
+  googleButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 16,
+    minHeight: 50,
+    justifyContent: 'center',
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#DADCE0',
+  },
+  googleIcon: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#4285F4',
+    marginRight: 10,
+  },
+  googleButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#757575',
+  },
   toggleContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -345,6 +446,9 @@ const baseStyles = {
     fontSize: 14,
     fontWeight: '600',
     color: '#4ECDC4',
+  },
+  disabledText: {
+    opacity: 0.5,
   },
   cancelButton: {
     paddingVertical: 12,
