@@ -11,6 +11,7 @@ export interface HabitAPI {
   description?: string;
   frequency_type: 'daily' | 'weekly' | 'custom';
   progress_type: 'yes_no' | 'time' | 'count';
+  target_value?: number; // Minutos para time, cantidad para count, null/undefined para yes_no
   frequency_days_of_week?: string; // CSV: "0,1,2,3,4,5,6"
   target_date?: string; // ISO date string
   current_streak: number;
@@ -31,7 +32,8 @@ export interface CreateHabitDTO {
   description?: string;
   frequency_type: 'daily' | 'weekly' | 'custom';
   progress_type: 'yes_no' | 'time' | 'count';
-  frequency_days_of_week?: number[]; // Array que se convertirá a CSV
+  target_value?: number; // Requerido para time y count, no enviar para yes_no
+  frequency_days_of_week?: string; // CSV: "0,1,2,3,4,5,6"
   target_date?: string; // ISO date string
   active_by_user: boolean;
 }
@@ -44,7 +46,8 @@ export interface UpdateHabitDTO {
   description?: string;
   frequency_type?: 'daily' | 'weekly' | 'custom';
   progress_type?: 'yes_no' | 'time' | 'count';
-  frequency_days_of_week?: number[];
+  target_value?: number; // Requerido para time y count si se cambia progress_type
+  frequency_days_of_week?: string; // CSV: "0,1,2,3,4,5,6"
   target_date?: string;
   active_by_user?: boolean;
   is_active?: boolean;
@@ -59,15 +62,23 @@ export class HabitMapper {
    * Convierte un Habit local a CreateHabitDTO para el backend
    */
   static toCreateDTO(habit: Omit<Habit, 'id' | 'createdAt' | 'currentStreak' | 'isActive' | 'lastCompletedDate'>): CreateHabitDTO {
-    return {
+    const dto: CreateHabitDTO = {
       name: habit.name,
       description: habit.description,
       frequency_type: habit.frequency.type,
       progress_type: habit.progressType,
-      frequency_days_of_week: habit.frequency.daysOfWeek,
+      // Convertir array de días a CSV string para el backend
+      frequency_days_of_week: habit.frequency.daysOfWeek?.join(','),
       target_date: habit.targetDate ? habit.targetDate.toISOString() : undefined,
       active_by_user: habit.activeByUser,
     };
+
+    // Solo incluir target_value para hábitos de tipo time o count
+    if ((habit.progressType === 'time' || habit.progressType === 'count') && habit.targetValue !== undefined) {
+      dto.target_value = habit.targetValue;
+    }
+
+    return dto;
   }
 
   /**
@@ -97,6 +108,7 @@ export class HabitMapper {
       currentStreak: habitAPI.current_streak,
       frequency: frequency,
       progressType: habitAPI.progress_type as ProgressType,
+      targetValue: habitAPI.target_value,
       isActive: habitAPI.is_active,
       activeByUser: habitAPI.active_by_user,
       lastCompletedDate: habitAPI.last_completed_date ? new Date(habitAPI.last_completed_date) : undefined,
@@ -114,9 +126,10 @@ export class HabitMapper {
     if (changes.description !== undefined) dto.description = changes.description;
     if (changes.frequency !== undefined) {
       dto.frequency_type = changes.frequency.type;
-      dto.frequency_days_of_week = changes.frequency.daysOfWeek;
+      dto.frequency_days_of_week = changes.frequency.daysOfWeek?.join(',');
     }
     if (changes.progressType !== undefined) dto.progress_type = changes.progressType;
+    if (changes.targetValue !== undefined) dto.target_value = changes.targetValue;
     if (changes.targetDate !== undefined) {
       dto.target_date = changes.targetDate ? changes.targetDate.toISOString() : undefined;
     }

@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
-  Alert,
+  Animated,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Habit, HabitCompletion } from '../types';
@@ -38,8 +39,59 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   const { scale } = useFontScale();
   const styles = useMemo(() => createStyles(theme, scale), [theme, scale]);
 
+  // Animaciones
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
+  const streakPulseAnim = useRef(new Animated.Value(1)).current;
+
   const shouldCompleteToday = HabitLogic.shouldCompleteToday(habit);
   const isActive = habit.isActive;
+
+  // Animación al presionar la tarjeta
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.97,
+      friction: 8,
+      tension: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 4,
+      tension: 200,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  // Animación del botón de completar
+  const handleButtonPressIn = () => {
+    Animated.spring(buttonScaleAnim, {
+      toValue: 0.9,
+      friction: 8,
+      tension: 400,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleButtonPressOut = () => {
+    Animated.sequence([
+      Animated.spring(buttonScaleAnim, {
+        toValue: 1.1,
+        friction: 3,
+        tension: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(buttonScaleAnim, {
+        toValue: 1,
+        friction: 4,
+        tension: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
   const getCurrentWeekDays = () => {
     const today = new Date();
@@ -111,29 +163,75 @@ export const HabitCard: React.FC<HabitCardProps> = ({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Calcular estadísticas de la semana para hábitos no diarios
+    const isDaily = habit.frequency.type === 'daily';
+    const targetDays = isDaily ? 7 : (habit.frequency.daysOfWeek?.length || 7);
+
+    // Contar completados y días restantes esta semana
+    let completedThisWeek = 0;
+    let remainingDays = 0; // días que todavía pueden completarse (hoy + futuros)
+
+    weekDays.forEach((date) => {
+      if (!shouldShowBubble(date)) return;
+
+      const isDateToday = date.toDateString() === today.toDateString();
+      const isDateFuture = date > today;
+
+      if (isDayCompleted(date)) {
+        completedThisWeek++;
+      } else if (isDateToday || isDateFuture) {
+        remainingDays++;
+      }
+    });
+
+    // ¿Todavía se puede alcanzar el objetivo semanal?
+    const canStillReachGoal = (completedThisWeek + remainingDays) >= targetDays;
+
     return (
       <View style={styles.timeline}>
         {weekDays.map((date, index) => {
-          if (!shouldShowBubble(date)) {
-            return <View key={index} style={styles.emptyBubble} />;
-          }
-
+          const dayApplies = shouldShowBubble(date);
           const completed = isDayCompleted(date);
           const isToday = date.toDateString() === today.toDateString();
           const isFuture = date > today;
+          const isPast = date < today;
 
-          let bubbleStyle = styles.bubbleMissed;
+          // Si el día NO aplica a este hábito, mostrar estilo "no aplica"
+          if (!dayApplies) {
+            return (
+              <View key={index} style={styles.bubbleContainer}>
+                <View style={[styles.bubble, styles.bubbleNotApplicable]}>
+                  <View style={styles.notApplicableLine} />
+                </View>
+                <Text style={[styles.bubbleLabel, styles.bubbleLabelMuted]}>
+                  {['D', 'L', 'M', 'M', 'J', 'V', 'S'][date.getDay()]}
+                </Text>
+              </View>
+            );
+          }
+
+          let bubbleStyle = styles.bubbleFuture; // Por defecto gris
+
           if (completed) {
-            bubbleStyle = styles.bubbleCompleted;
+            bubbleStyle = styles.bubbleCompleted; // Verde
+          } else if (isToday) {
+            bubbleStyle = styles.bubblePending; // Naranja (pendiente hoy)
           } else if (isFuture) {
-            bubbleStyle = styles.bubbleFuture;
+            bubbleStyle = styles.bubbleFuture; // Gris (futuro)
+          } else if (isPast) {
+            // Día pasado sin completar
+            if (isDaily) {
+              // Hábitos diarios: día pasado = fallido
+              bubbleStyle = styles.bubbleMissed; // Rojo
+            } else {
+              // Hábitos semanales: solo rojo si ya no se puede alcanzar el objetivo
+              bubbleStyle = canStillReachGoal ? styles.bubbleFuture : styles.bubbleMissed;
+            }
           }
 
           return (
             <View key={index} style={styles.bubbleContainer}>
-              <View style={[styles.bubble, bubbleStyle]}>
-                {isToday && <View style={styles.todayIndicator} />}
-              </View>
+              <View style={[styles.bubble, bubbleStyle]} />
               <Text style={styles.bubbleLabel}>
                 {['D', 'L', 'M', 'M', 'J', 'V', 'S'][date.getDay()]}
               </Text>
@@ -167,51 +265,73 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   };
 
   return (
-    <TouchableOpacity
-      style={[styles.card, { borderLeftColor: getStatusColor() }]}
+    <TouchableWithoutFeedback
       onPress={() => onPress(habit.id)}
-      activeOpacity={0.8}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
     >
-      <View style={styles.header}>
-        <Text style={styles.name}>{habit.name}</Text>
-        <View style={styles.streakContainer}>
-          <Ionicons name="flame" size={16} color={theme.colors.danger} />
-          <Text style={styles.streak}>{habit.currentStreak}</Text>
-        </View>
-      </View>
-
-      <View style={styles.details}>
-        <Text style={styles.frequency}>{getFrequencyText()}</Text>
-        <Text style={[styles.status, { color: getStatusColor() }]}>
-          {getStatusText()}
-        </Text>
-      </View>
-
-      {renderWeekTimeline()}
-
-      <View style={styles.actions}>
-        {habit.activeByUser && shouldCompleteToday && !isCompletedToday && (
-          <TouchableOpacity style={styles.completeButton} onPress={handleComplete}>
-            <Text style={styles.buttonText}>Completar</Text>
-          </TouchableOpacity>
-        )}
-
-        {!habit.activeByUser && (
-          <TouchableOpacity style={styles.reactivateButton} onPress={handleReactivate}>
-            <Text style={styles.buttonText}>Reactivar</Text>
-          </TouchableOpacity>
-        )}
-
-        {habit.activeByUser && isCompletedToday && (
-          <View style={styles.completedBadge}>
-            <View style={styles.completedContainer}>
-              <Ionicons name="checkmark-circle" size={16} color={theme.colors.textOnPrimary} />
-              <Text style={styles.completedText}>Completado</Text>
-            </View>
+      <Animated.View
+        style={[
+          styles.card,
+          { borderLeftColor: getStatusColor() },
+          { transform: [{ scale: scaleAnim }] }
+        ]}
+      >
+        <View style={styles.header}>
+          <Text style={styles.name}>{habit.name}</Text>
+          <View style={styles.streakContainer}>
+            <Animated.View style={{ transform: [{ scale: streakPulseAnim }] }}>
+              <Ionicons name="flame" size={16} color={theme.colors.danger} />
+            </Animated.View>
+            <Text style={styles.streak}>{habit.currentStreak}</Text>
           </View>
-        )}
-      </View>
-    </TouchableOpacity>
+        </View>
+
+        <View style={styles.details}>
+          <Text style={styles.frequency}>{getFrequencyText()}</Text>
+          <Text style={[styles.status, { color: getStatusColor() }]}>
+            {getStatusText()}
+          </Text>
+        </View>
+
+        {renderWeekTimeline()}
+
+        <View style={styles.actions}>
+          {!!habit.activeByUser && shouldCompleteToday && !isCompletedToday && (
+            <TouchableWithoutFeedback
+              onPress={handleComplete}
+              onPressIn={handleButtonPressIn}
+              onPressOut={handleButtonPressOut}
+            >
+              <Animated.View style={[styles.completeButton, { transform: [{ scale: buttonScaleAnim }] }]}>
+                <Text style={styles.buttonText}>Completar</Text>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          )}
+
+          {!habit.activeByUser && (
+            <TouchableWithoutFeedback
+              onPress={handleReactivate}
+              onPressIn={handleButtonPressIn}
+              onPressOut={handleButtonPressOut}
+            >
+              <Animated.View style={[styles.reactivateButton, { transform: [{ scale: buttonScaleAnim }] }]}>
+                <Text style={styles.buttonText}>Reactivar</Text>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          )}
+
+          {!!habit.activeByUser && isCompletedToday && (
+            <View style={styles.completedBadge}>
+              <View style={styles.completedContainer}>
+                <Ionicons name="checkmark-circle" size={16} color={theme.colors.textOnPrimary} />
+                <Text style={styles.completedText}>Completado</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -333,10 +453,13 @@ const createStyles = (theme: AppTheme, scale: number) => {
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: 4,
-      position: 'relative',
+      overflow: 'hidden',
     },
     bubbleCompleted: {
       backgroundColor: theme.colors.primary,
+    },
+    bubblePending: {
+      backgroundColor: theme.colors.warning,
     },
     bubbleMissed: {
       backgroundColor: theme.colors.danger,
@@ -344,23 +467,30 @@ const createStyles = (theme: AppTheme, scale: number) => {
     bubbleFuture: {
       backgroundColor: futureBubble,
     },
+    bubbleNotApplicable: {
+      backgroundColor: theme.name === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderWidth: 1.5,
+      borderColor: theme.name === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+    },
+    notApplicableLine: {
+      position: 'absolute',
+      width: 18,
+      height: 1.5,
+      backgroundColor: theme.name === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)',
+      transform: [{ rotate: '-45deg' }],
+    },
     emptyBubble: {
       width: 32,
       height: 32,
       flex: 1,
     },
-    todayIndicator: {
-      position: 'absolute',
-      bottom: -2,
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: theme.colors.warning,
-    },
     bubbleLabel: {
       fontSize: 10 * scale,
       color: theme.colors.textMuted,
       fontWeight: '600',
+    },
+    bubbleLabelMuted: {
+      opacity: 0.4,
     },
   });
 };

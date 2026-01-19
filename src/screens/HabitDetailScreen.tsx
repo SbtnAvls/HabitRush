@@ -284,17 +284,29 @@ export const HabitDetailScreen: React.FC<any> = ({
         <View style={styles.weekRow}>
           {weekDays.map((date, index) => {
             const isToday = date.toDateString() === today.toDateString();
-            const shouldShow = shouldShowBubble(date);
+            const dayApplies = shouldShowBubble(date);
             const isCompleted = isDayCompleted(date);
             const isPast = date < today;
             const isFuture = date > today;
 
+            // Si el día NO aplica a este hábito
+            if (!dayApplies) {
+              return (
+                <View key={index} style={styles.dayColumn}>
+                  <View style={[styles.dayBubble, styles.dayBubbleNotApplicable]}>
+                    <View style={styles.notApplicableLine} />
+                  </View>
+                  <Text style={[styles.dayLabel, styles.dayLabelMuted]}>
+                    {dayLabels[(date.getDay() + 6) % 7]}
+                  </Text>
+                </View>
+              );
+            }
+
             let bubbleStyle = styles.dayBubbleInactive;
             let iconName: string | null = null;
 
-            if (!shouldShow) {
-              bubbleStyle = styles.dayBubbleDisabled;
-            } else if (isCompleted) {
+            if (isCompleted) {
               bubbleStyle = styles.dayBubbleCompleted;
               iconName = 'checkmark';
             } else if (isToday) {
@@ -316,7 +328,7 @@ export const HabitDetailScreen: React.FC<any> = ({
                       color={isCompleted ? '#FFFFFF' : theme.colors.danger}
                     />
                   ) : (
-                    shouldShow && <View style={styles.dayDot} />
+                    <View style={styles.dayDot} />
                   )}
                 </View>
                 <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]}>
@@ -805,6 +817,18 @@ const createStyles = (theme: AppTheme) => {
     dayBubbleDisabled: {
       backgroundColor: 'transparent',
     },
+    dayBubbleNotApplicable: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+    },
+    notApplicableLine: {
+      position: 'absolute',
+      width: 20,
+      height: 1.5,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)',
+      transform: [{ rotate: '-45deg' }],
+    },
     dayBubbleToday: {
       borderWidth: 2,
       borderColor: theme.colors.primary,
@@ -823,6 +847,9 @@ const createStyles = (theme: AppTheme) => {
     dayLabelToday: {
       color: theme.colors.primary,
       fontWeight: '700',
+    },
+    dayLabelMuted: {
+      opacity: 0.4,
     },
     frequencyContainer: {
       marginHorizontal: 16,

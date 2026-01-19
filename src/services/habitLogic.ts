@@ -1,6 +1,5 @@
 import { Habit, User, HabitCompletion, Challenge, AppState, LifeChallenge } from '../types';
 import { StorageService } from './storage';
-import { LifeChallengeVerifier } from './lifeChallenges';
 import { LeagueLogic } from './leagueLogic';
 
 export class HabitLogic {
@@ -229,7 +228,8 @@ export class HabitLogic {
     activeByUser: boolean,
     description?: string,
     targetDate?: Date,
-    state?: AppState
+    state?: AppState,
+    targetValue?: number
   ): Promise<AppState> {
     const newHabit: Habit = {
       id: `habit_${Date.now()}`,
@@ -240,7 +240,8 @@ export class HabitLogic {
       currentStreak: 0,
       frequency,
       progressType,
-      isActive: true,
+      targetValue: (progressType === 'time' || progressType === 'count') ? targetValue : undefined,
+      isActive: activeByUser, // Si el usuario lo pone en pausa, isActive = false
       activeByUser,
       createdAt: new Date(),
     };
@@ -338,56 +339,17 @@ export class HabitLogic {
     return newState;
   }
 
-  // Verificar todos los retos de vida disponibles
+  // DEPRECATED: La verificación de life challenges ahora se hace en el backend
+  // El frontend debe usar challenge.canRedeem directamente
+  // Esta función se mantiene por compatibilidad pero ya no se usa
   static getAvailableLifeChallenges(state: AppState): Map<string, boolean> {
     const availabilityMap = new Map<string, boolean>();
-
-    if(state.lifeChallenges) for (const challenge of state.lifeChallenges) {
-      const isAvailable = LifeChallengeVerifier.verifyChallenge(challenge, state);
-      availabilityMap.set(challenge.id, isAvailable);
+    // Los lifeChallenges ahora vienen del backend con canRedeem ya calculado
+    if (state.lifeChallenges) {
+      for (const challenge of state.lifeChallenges) {
+        availabilityMap.set(challenge.id, challenge.canRedeem || false);
+      }
     }
-
     return availabilityMap;
-  }
-
-  // Redimir un reto de vida
-  static async redeemLifeChallenge(challengeId: string, state: AppState): Promise<AppState> {
-    const challenge = state.lifeChallenges.find(lc => lc.id === challengeId);
-    if (!challenge) {
-      throw new Error('Challenge not found');
-    }
-
-    // Verificar si el reto está disponible
-    const isAvailable = LifeChallengeVerifier.verifyChallenge(challenge, state);
-    if (!isAvailable) {
-      throw new Error('Challenge requirements not met');
-    }
-
-    // Verificar si aún se puede redimir
-    if (challenge.redeemable === 'once' && challenge.completedCount > 0) {
-      throw new Error('Challenge already redeemed');
-    }
-
-    // Actualizar el reto
-    const updatedLifeChallenges = state.lifeChallenges.map(lc =>
-      lc.id === challengeId
-        ? { ...lc, completedCount: lc.completedCount + 1 }
-        : lc
-    );
-
-    // Dar la recompensa de vidas
-    const updatedUser = {
-      ...state.user,
-      lives: Math.min(state.user.maxLives, state.user.lives + challenge.reward),
-    };
-
-    const newState: AppState = {
-      ...state,
-      lifeChallenges: updatedLifeChallenges,
-      user: updatedUser,
-    };
-
-    await StorageService.saveAppState(newState);
-    return newState;
   }
 }
