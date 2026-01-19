@@ -17,6 +17,7 @@ export interface HabitAPI {
   current_streak: number;
   is_active: boolean;
   active_by_user: boolean;
+  is_blocked: boolean; // Bloqueado por fallo pendiente de resolver
   last_completed_date?: string; // ISO date string
   created_at: string;
   updated_at: string;
@@ -61,7 +62,7 @@ export class HabitMapper {
   /**
    * Convierte un Habit local a CreateHabitDTO para el backend
    */
-  static toCreateDTO(habit: Omit<Habit, 'id' | 'createdAt' | 'currentStreak' | 'isActive' | 'lastCompletedDate'>): CreateHabitDTO {
+  static toCreateDTO(habit: Omit<Habit, 'id' | 'createdAt' | 'currentStreak' | 'isActive' | 'isBlocked' | 'lastCompletedDate'>): CreateHabitDTO {
     const dto: CreateHabitDTO = {
       name: habit.name,
       description: habit.description,
@@ -111,6 +112,7 @@ export class HabitMapper {
       targetValue: habitAPI.target_value,
       isActive: habitAPI.is_active,
       activeByUser: habitAPI.active_by_user,
+      isBlocked: habitAPI.is_blocked ?? false,
       lastCompletedDate: habitAPI.last_completed_date ? new Date(habitAPI.last_completed_date) : undefined,
       createdAt: new Date(habitAPI.created_at),
     };
@@ -174,7 +176,7 @@ export class HabitService {
   /**
    * Crea un nuevo hábito en el backend
    */
-  static async createHabit(habit: Omit<Habit, 'id' | 'createdAt' | 'currentStreak' | 'isActive' | 'lastCompletedDate'>): Promise<Habit> {
+  static async createHabit(habit: Omit<Habit, 'id' | 'createdAt' | 'currentStreak' | 'isActive' | 'isBlocked' | 'lastCompletedDate'>): Promise<Habit> {
     try {
       const dto = HabitMapper.toCreateDTO(habit);
       const response = await apiClient.post<HabitAPI>('/habits', dto);

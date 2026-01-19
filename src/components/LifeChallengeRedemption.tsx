@@ -12,23 +12,28 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { useTheme } from '../theme/useTheme';
-import { LifeChallengeService, LifeChallengeWithStatus } from '../services/lifeChallengeService';
+import { LifeChallengeService } from '../services/lifeChallengeService';
+import { LifeChallenge } from '../types';
 
 interface LifeChallengeRedemptionProps {
   onSuccess: () => void;
   onBack?: () => void;
   showOnlyRedeemable?: boolean;
+  currentLives: number;
+  maxLives: number;
 }
 
 export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = ({
   onSuccess,
   onBack,
   showOnlyRedeemable = false,
+  currentLives,
+  maxLives,
 }) => {
   const styles = useThemedStyles(baseStyles);
   const theme = useTheme();
 
-  const [challenges, setChallenges] = useState<LifeChallengeWithStatus[]>([]);
+  const [challenges, setChallenges] = useState<LifeChallenge[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [redeeming, setRedeeming] = useState<string | null>(null);
@@ -49,7 +54,7 @@ export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = (
       const lifeChallenges = await LifeChallengeService.getLifeChallengesWithStatus();
 
       if (showOnlyRedeemable) {
-        setChallenges(lifeChallenges.filter(lc => lc.can_redeem));
+        setChallenges(lifeChallenges.filter(lc => lc.canRedeem));
       } else {
         setChallenges(lifeChallenges);
       }
@@ -62,12 +67,101 @@ export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = (
     }
   };
 
-  const redeemChallenge = async (challenge: LifeChallengeWithStatus) => {
-    if (!challenge.can_redeem) {
+  const availableSlots = maxLives - currentLives;
+
+  const executeRedemption = async (challenge: LifeChallenge) => {
+    setRedeeming(challenge.id);
+    try {
+      const result = await LifeChallengeService.redeemLifeChallenge(challenge.id);
+
+      // Animación de éxito
+      Animated.sequence([
+        Animated.timing(successAnimation, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(successAnimation, {
+          toValue: 0,
+          duration: 300,
+          delay: 1500,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      Alert.alert(
+        '¡Éxito!',
+        `Has ganado ${result.livesGained} vida(s). Ahora tienes ${result.currentLives} vidas.`,
+        [
+          {
+            text: 'Continuar',
+            onPress: () => {
+              if (result.currentLives > 0) {
+                onSuccess();
+              } else {
+                loadLifeChallenges();
+              }
+            }
+          }
+        ]
+      );
+    } catch (error: any) {
+      // Manejar error de casillas insuficientes (retos 'once')
+      if (error.code === 'INSUFFICIENT_LIFE_SLOTS') {
+        Alert.alert(
+          'Casillas Insuficientes',
+          `${error.message}\n\n` +
+          `Puedes desbloquear más casillas de vida completando ciertos retos especiales que aumentan tu máximo de vidas.`,
+          [{ text: 'Entendido' }]
+        );
+      } else {
+        Alert.alert('Error', error.message || 'No se pudo redimir el Life Challenge');
+      }
+    } finally {
+      setRedeeming(null);
+    }
+  };
+
+  const redeemChallenge = async (challenge: LifeChallenge) => {
+    if (!challenge.canRedeem) {
       Alert.alert('No disponible', 'Este Life Challenge no se puede redimir en este momento');
       return;
     }
 
+    // Para retos 'unlimited': verificar si hay casillas insuficientes y advertir
+    if (challenge.redeemable === 'unlimited' && challenge.reward > availableSlots) {
+      const livesToReceive = Math.min(challenge.reward, availableSlots);
+
+      if (availableSlots === 0) {
+        Alert.alert(
+          'Casillas de Vida Llenas',
+          `Ya tienes todas tus casillas de vida llenas (${currentLives}/${maxLives}).\n\n` +
+          `Este reto da +${challenge.reward} vida${challenge.reward > 1 ? 's' : ''}, pero no recibirás ninguna.\n\n` +
+          `Puedes desbloquear más casillas de vida completando ciertos retos especiales.`,
+          [{ text: 'Entendido' }]
+        );
+        return;
+      }
+
+      Alert.alert(
+        'Redención Parcial',
+        `Este reto da +${challenge.reward} vida${challenge.reward > 1 ? 's' : ''}, pero solo tienes ${availableSlots} casilla${availableSlots > 1 ? 's' : ''} disponible${availableSlots > 1 ? 's' : ''}.\n\n` +
+        `Recibirás solo +${livesToReceive} vida${livesToReceive > 1 ? 's' : ''}.\n\n` +
+        `Puedes desbloquear más casillas de vida completando ciertos retos especiales.\n\n` +
+        `¿Quieres canjear de todas formas?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Canjear',
+            style: 'default',
+            onPress: () => executeRedemption(challenge),
+          },
+        ]
+      );
+      return;
+    }
+
+    // Flujo normal
     Alert.alert(
       'Confirmar Redención',
       `¿Deseas redimir "${challenge.title}" por ${challenge.reward} vida(s)?`,
@@ -76,49 +170,7 @@ export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = (
         {
           text: 'Redimir',
           style: 'default',
-          onPress: async () => {
-            setRedeeming(challenge.id);
-            try {
-              const result = await LifeChallengeService.redeemLifeChallenge(challenge.id);
-
-              // Animación de éxito
-              Animated.sequence([
-                Animated.timing(successAnimation, {
-                  toValue: 1,
-                  duration: 300,
-                  useNativeDriver: true,
-                }),
-                Animated.timing(successAnimation, {
-                  toValue: 0,
-                  duration: 300,
-                  delay: 1500,
-                  useNativeDriver: true,
-                }),
-              ]).start();
-
-              Alert.alert(
-                '¡Éxito!',
-                `Has ganado ${result.livesGained} vida(s). Ahora tienes ${result.currentLives} vidas.`,
-                [
-                  {
-                    text: 'Continuar',
-                    onPress: () => {
-                      if (result.currentLives > 0) {
-                        onSuccess();
-                      } else {
-                        // Si aún no tiene vidas, recargar la lista
-                        loadLifeChallenges();
-                      }
-                    }
-                  }
-                ]
-              );
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'No se pudo redimir el Life Challenge');
-            } finally {
-              setRedeeming(null);
-            }
-          }
+          onPress: () => executeRedemption(challenge),
         }
       ]
     );
@@ -168,7 +220,7 @@ export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = (
     return iconMap[iconName || 'star'] || 'star';
   };
 
-  const renderChallenge = (challenge: LifeChallengeWithStatus) => {
+  const renderChallenge = (challenge: LifeChallenge) => {
     const status = getStatusBadge(challenge.status);
     const isRedeeming = redeeming === challenge.id;
     const icon = getIconForChallenge(challenge.icon);
@@ -180,9 +232,9 @@ export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = (
           styles.challengeCard,
           challenge.status === 'redeemed' && styles.challengeCardRedeemed,
         ]}
-        onPress={() => challenge.can_redeem && redeemChallenge(challenge)}
-        disabled={!challenge.can_redeem || isRedeeming}
-        activeOpacity={challenge.can_redeem ? 0.8 : 1}
+        onPress={() => challenge.canRedeem && redeemChallenge(challenge)}
+        disabled={!challenge.canRedeem || isRedeeming}
+        activeOpacity={challenge.canRedeem ? 0.8 : 1}
       >
         <View style={styles.challengeHeader}>
           <View style={[styles.iconContainer, { backgroundColor: `${status.color}20` }]}>
@@ -201,15 +253,26 @@ export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = (
                 </Text>
               </View>
 
-              {challenge.redeemable_type === 'once' && challenge.status === 'obtained' && (
-                <View style={styles.onceBadge}>
-                  <Icon name="alert-circle-outline" size={12} color="#FF6B6B" />
-                  <Text style={styles.onceText}>Una vez</Text>
-                </View>
-              )}
+              {/* Badge de tipo: Una vez o Ilimitado */}
+              <View style={[
+                styles.typeBadge,
+                challenge.redeemable === 'once' ? styles.typeBadgeOnce : styles.typeBadgeUnlimited
+              ]}>
+                <Icon
+                  name={challenge.redeemable === 'once' ? 'alert-circle-outline' : 'infinity'}
+                  size={12}
+                  color={challenge.redeemable === 'once' ? '#E67E22' : '#9B59B6'}
+                />
+                <Text style={[
+                  styles.typeBadgeText,
+                  { color: challenge.redeemable === 'once' ? '#E67E22' : '#9B59B6' }
+                ]}>
+                  {challenge.redeemable === 'once' ? '1 vez' : 'Ilimitado'}
+                </Text>
+              </View>
             </View>
 
-            {challenge.can_redeem && (
+            {challenge.canRedeem && (
               <TouchableOpacity
                 style={styles.redeemButton}
                 onPress={() => redeemChallenge(challenge)}
@@ -228,15 +291,15 @@ export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = (
               </TouchableOpacity>
             )}
 
-            {challenge.obtained_at && (
+            {challenge.obtainedAt && (
               <Text style={styles.dateText}>
-                Obtenido: {new Date(challenge.obtained_at).toLocaleDateString('es-ES')}
+                Obtenido: {new Date(challenge.obtainedAt).toLocaleDateString('es-ES')}
               </Text>
             )}
 
-            {challenge.redeemed_at && (
+            {challenge.redeemedAt && (
               <Text style={styles.dateText}>
-                Redimido: {new Date(challenge.redeemed_at).toLocaleDateString('es-ES')}
+                Redimido: {new Date(challenge.redeemedAt).toLocaleDateString('es-ES')}
               </Text>
             )}
           </View>
@@ -246,7 +309,7 @@ export const LifeChallengeRedemption: React.FC<LifeChallengeRedemptionProps> = (
   };
 
   const groupedChallenges = {
-    available: challenges.filter(c => c.can_redeem),
+    available: challenges.filter(c => c.canRedeem),
     redeemed: challenges.filter(c => c.status === 'redeemed'),
     pending: challenges.filter(c => c.status === 'pending'),
   };
@@ -464,17 +527,21 @@ const baseStyles = {
     fontWeight: '500',
     marginLeft: 4,
   },
-  onceBadge: {
+  typeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFE6E6',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
   },
-  onceText: {
+  typeBadgeOnce: {
+    backgroundColor: '#FEF3E2',
+  },
+  typeBadgeUnlimited: {
+    backgroundColor: '#F3E8FF',
+  },
+  typeBadgeText: {
     fontSize: 11,
-    color: '#FF6B6B',
     marginLeft: 3,
     fontWeight: '500',
   },

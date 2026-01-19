@@ -30,8 +30,14 @@ export class UserService {
    */
   static async getMe(): Promise<UserAPI> {
     try {
-      const response = await apiClient.get<UserAPI>('/users/me');
-      return response.data;
+      const response = await apiClient.get<any>('/users/me');
+      const data = response.data;
+
+      // Mapear username a name (el backend usa username, el frontend usa name)
+      return {
+        ...data,
+        name: data.username || data.name,
+      };
     } catch (error: any) {
       console.error('Error getting user data:', error);
       throw error;

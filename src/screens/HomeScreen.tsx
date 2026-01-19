@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,25 +6,36 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Animated,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAppContext } from '../context/AppContext';
 import { HabitCard } from '../components/HabitCard';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { useTheme } from '../theme/useTheme';
 import { AddHabitModal } from '../components/AddHabitModal';
 import { CompleteHabitModal } from '../components/CompleteHabitModal';
 import { LifeChallengeCard } from '../components/LifeChallengeCard';
 import { AppHeader } from '../components/AppHeader';
 import { AuthModal } from '../components/AuthModal';
 import { HabitLogic } from '../services/habitLogic';
-import { Habit } from '../types';
+import { Habit, PendingRedemption } from '../types';
 import { useCurrentLeague } from '../hooks/useCurrentLeague';
+import { usePendingRedemptions } from '../hooks/usePendingRedemptions';
 import { LivesIndicator } from '../components/LivesIndicator';
 import { GameOverScreen } from './GameOverScreen';
 import { LifeChallengeNotification } from '../components/LifeChallengeNotification';
 import { LeagueChangeNotification } from '../components/LeagueChangeNotification';
+import { PendingRedemptionBanner } from '../components/PendingRedemptionBanner';
+import { PendingRedemptionModal } from '../components/PendingRedemptionModal';
 import { useLeagueChangeDetection } from '../hooks/useLeagueChangeDetection';
+import { FirstCompletionCelebration } from '../components/FirstCompletionCelebration';
 import sessionEventEmitter from '../services/sessionEventEmitter';
+import { HomeScreenSkeleton } from '../components/animations/Skeleton';
+import { AnimatedView, AnimatedNumber } from '../components/animations/AnimatedView';
+import { AnimatedFAB } from '../components/animations/AnimatedFAB';
+import { PulsingDot } from '../components/animations/PulsingDot';
+import { AnimatedCollapsible, AnimatedToggleButton, AnimatedFadeOverlay } from '../components/animations/AnimatedCollapsible';
 
 interface HomeScreenProps {
   navigation?: any;
@@ -32,7 +43,8 @@ interface HomeScreenProps {
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const styles = useThemedStyles(baseStyles);
-  const { state, markHabitCompleted, createHabit, refreshState, completeChallenge, activateHabit, redeemLifeChallenge, isAuthenticated, authUser } = useAppContext();
+  const theme = useTheme();
+  const { state, loading, markHabitCompleted, createHabit, refreshState, completeChallenge, activateHabit, redeemLifeChallenge, isAuthenticated, authUser } = useAppContext();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
@@ -40,15 +52,40 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [showAllChallenges, setShowAllChallenges] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [lifeChallengeNotification, setLifeChallengeNotification] = useState<any>(null);
+  const [selectedPendingRedemption, setSelectedPendingRedemption] = useState<PendingRedemption | null>(null);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [firstCompletionCelebration, setFirstCompletionCelebration] = useState<{ visible: boolean; habitName: string }>({ visible: false, habitName: '' });
   const { data: leagueData } = useCurrentLeague();
   const { pendingChange: leagueChange, dismissChange: dismissLeagueChange } = useLeagueChangeDetection();
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // Resetear scroll al top cuando cambie el estado de autenticación
+  useEffect(() => {
+    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+  }, [isAuthenticated]);
+
+  // Hook para pending redemptions (24h de gracia)
+  // onUserDead: cuando el usuario pierde todas las vidas al aceptar perder vida
+  const {
+    pendingRedemptions,
+    hasActivePendings,
+    redeemLife,
+    redeemChallenge,
+    actionLoading: pendingActionLoading,
+  } = usePendingRedemptions({
+    onUserDead: () => {
+      // El usuario perdió todas las vidas - el componente GameOverScreen
+      // se mostrará automáticamente al detectar lives === 0
+      // No necesitamos hacer nada adicional aquí
+    },
+  });
 
   // Separar hábitos activos e inactivos
   const activeHabits = state.habits.filter(h => h.activeByUser);
   const inactiveHabits = state.habits.filter(h => !h.activeByUser);
 
-  // Verificar disponibilidad de retos
-  const challengeAvailability = HabitLogic.getAvailableLifeChallenges(state);
+  // NOTA: La disponibilidad de retos (canRedeem) ahora viene del backend
+  // ya no se calcula localmente con HabitLogic.getAvailableLifeChallenges
 
   // Escuchar eventos de Life Challenges obtenidos
   useEffect(() => {
@@ -73,6 +110,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     return <GameOverScreen />;
   }
 
+  // Si está cargando inicialmente (sin datos), mostrar skeletons
+  if (loading && state.habits.length === 0) {
+    return (
+      <View style={styles.container}>
+        <AppHeader navigation={navigation} />
+        <ScrollView contentContainerStyle={styles.listContainer}>
+          <HomeScreenSkeleton />
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Determinar si mostrar skeletons (durante refresh)
+  const showSkeletons = refreshing;
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshState();
@@ -89,10 +141,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   const handleCompleteConfirm = async (progressData?: any, notes?: string, images?: string[]) => {
     if (selectedHabit) {
+      // Verificar si es el primer completion (racha actual es 0)
+      const isFirstCompletion = selectedHabit.currentStreak === 0;
+      const habitName = selectedHabit.name;
+
       const result = await markHabitCompleted(selectedHabit.id, progressData, notes, images);
 
-      // Si se obtuvieron Life Challenges, mostrar notificación
-      if (result.lifeChallengesObtained && result.lifeChallengesObtained.length > 0) {
+      // Si es el primer completion, mostrar celebración
+      if (isFirstCompletion && result.success) {
+        setFirstCompletionCelebration({ visible: true, habitName });
+      }
+      // Si se obtuvieron Life Challenges, mostrar notificación (después de la celebración)
+      else if (result.lifeChallengesObtained && result.lifeChallengesObtained.length > 0) {
         setLifeChallengeNotification(result.lifeChallengesObtained[0]);
       }
 
@@ -106,9 +166,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     progressType: any,
     activeByUser: boolean,
     description?: string,
-    targetDate?: Date
+    targetDate?: Date,
+    targetValue?: number
   ) => {
-    await createHabit(name, frequency, progressType, activeByUser, description, targetDate);
+    await createHabit(name, frequency, progressType, activeByUser, description, targetDate, targetValue);
   };
 
   const handleAddHabitPress = () => {
@@ -136,8 +197,29 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const handleRedeemChallenge = async (challengeId: string) => {
     try {
       await redeemLifeChallenge(challengeId);
-    } catch (error) {
+      Alert.alert(
+        '¡Vida Obtenida!',
+        'Has canjeado tu recompensa exitosamente.',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
       console.error('Error redeeming challenge:', error);
+
+      // Manejar error de casillas insuficientes (retos 'once')
+      if (error.code === 'INSUFFICIENT_LIFE_SLOTS') {
+        Alert.alert(
+          'Casillas Insuficientes',
+          `${error.message}\n\n` +
+          `Puedes desbloquear más casillas de vida completando ciertos retos especiales que aumentan tu máximo de vidas.`,
+          [{ text: 'Entendido' }]
+        );
+      } else {
+        Alert.alert(
+          'Error',
+          error.message || 'No se pudo canjear el reto. Intenta de nuevo.',
+          [{ text: 'OK' }]
+        );
+      }
     }
   };
 
@@ -154,6 +236,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     if (navigation) {
       navigation.navigate('HabitDetail', { habitId });
     }
+  };
+
+  // Handlers para pending redemptions
+  const handlePendingBannerPress = (pending: PendingRedemption) => {
+    setSelectedPendingRedemption(pending);
+    setShowPendingModal(true);
+  };
+
+  const handleClosePendingModal = () => {
+    setShowPendingModal(false);
+    setSelectedPendingRedemption(null);
+  };
+
+  const handlePendingRedeemLife = async (pendingId: string) => {
+    await redeemLife(pendingId);
+  };
+
+  const handlePendingRedeemChallenge = async (pendingId: string, challengeId: string) => {
+    await redeemChallenge(pendingId, challengeId);
   };
 
   const renderHabitCard = ({ item: habit }: { item: any }) => {
@@ -179,102 +280,160 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     <View style={styles.container}>
       <AppHeader navigation={navigation} />
 
-      {/* Indicador de vidas */}
-      <LivesIndicator
-        currentLives={state.user.lives}
-        maxLives={state.user.maxLives}
-        onPress={() => navigation?.navigate('LifeChallenges')}
-      />
+      {/* Indicador sutil de sincronización */}
+      {loading && (
+        <AnimatedView animation="fadeIn" duration={200}>
+          <View style={styles.syncIndicator}>
+            <PulsingDot size={8} color="#4ECDC4" />
+            <Text style={styles.syncIndicatorText}>Sincronizando...</Text>
+          </View>
+        </AnimatedView>
+      )}
+
+      {/* Indicador de vidas con animación */}
+      <AnimatedView animation="fadeSlideUp" delay={100}>
+        <LivesIndicator
+          currentLives={state.user.lives}
+          maxLives={state.user.maxLives}
+        />
+      </AnimatedView>
+
+      {/* Banners de Pending Redemptions (24h de gracia) */}
+      {hasActivePendings && (
+        <View style={styles.pendingRedemptionsContainer}>
+          {pendingRedemptions
+            .filter(p => p.status === 'pending' || p.status === 'challenge_assigned')
+            .map(pending => (
+              <PendingRedemptionBanner
+                key={pending.id}
+                pending={pending}
+                onPress={() => handlePendingBannerPress(pending)}
+              />
+            ))}
+        </View>
+      )}
 
       {/* Lista de hábitos */}
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {/* Mostrar skeletons durante refresh */}
+        {showSkeletons ? (
+          <HomeScreenSkeleton />
+        ) : (
+        <>
         {/* XP y Liga en la parte superior */}
         <View style={styles.topInfoContainer}>
-          <View style={styles.xpLeagueCard}>
-            <View style={styles.xpSection}>
-              <View style={styles.sectionHeader}>
-                <Ionicons
-                  name="flash-outline"
-                  size={20}
-                  style={[styles.sectionIcon, styles.xpIcon]}
-                />
-                <Text style={styles.xpLabel}>XP Total</Text>
+          <AnimatedView animation="fadeSlideUp" delay={200}>
+            <View style={styles.xpLeagueCard}>
+              <View style={styles.xpSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons
+                    name="flash-outline"
+                    size={20}
+                    style={[styles.sectionIcon, styles.xpIcon]}
+                  />
+                  <Text style={styles.xpLabel}>XP Total</Text>
+                </View>
+                <AnimatedNumber value={state.user.xp} style={styles.xpValue} duration={1000} />
               </View>
-              <Text style={styles.xpValue}>{state.user.xp}</Text>
-            </View>
-            <View style={styles.leagueDivider} />
-            <View style={styles.leagueSection}>
-              <View style={styles.sectionHeader}>
-                <Ionicons
-                  name="trophy-outline"
-                  size={20}
-                  style={[styles.sectionIcon, styles.leagueIcon]}
-                />
-                <Text style={styles.leagueLabel}>Liga Actual</Text>
+              <View style={styles.leagueDivider} />
+              <View style={styles.leagueSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons
+                    name="trophy-outline"
+                    size={20}
+                    style={[styles.sectionIcon, styles.leagueIcon]}
+                  />
+                  <Text style={styles.leagueLabel}>Liga Actual</Text>
+                </View>
+                {isAuthenticated && leagueData?.league ? (
+                  <Text style={styles.leagueNumber}>{leagueData.league.name}</Text>
+                ) : (
+                  <Text style={styles.leagueNumber}>-</Text>
+                )}
               </View>
-              {isAuthenticated && leagueData?.league ? (
-                <Text style={styles.leagueNumber}>{leagueData.league.name}</Text>
-              ) : (
-                <Text style={styles.leagueNumber}>-</Text>
-              )}
             </View>
-          </View>
+          </AnimatedView>
 
-          {/* Estadísticas compactas */}
-          <View style={styles.compactStatsContainer}>
-            <View style={styles.compactStatItem}>
-              <Text style={styles.compactStatNumber}>{stats.activeHabits}</Text>
-              <Text style={styles.compactStatLabel}>Activos</Text>
+          {/* Estadísticas compactas con animación escalonada */}
+          <AnimatedView animation="fadeSlideUp" delay={300}>
+            <View style={styles.compactStatsContainer}>
+              <AnimatedView animation="scale" index={0} staggerDelay={100} delay={400}>
+                <View style={styles.compactStatItem}>
+                  <AnimatedNumber value={stats.activeHabits} style={styles.compactStatNumber} duration={800} />
+                  <Text style={styles.compactStatLabel}>Activos</Text>
+                </View>
+              </AnimatedView>
+              <AnimatedView animation="scale" index={1} staggerDelay={100} delay={400}>
+                <View style={styles.compactStatItem}>
+                  <AnimatedNumber value={stats.completedToday} style={styles.compactStatNumber} duration={800} />
+                  <Text style={styles.compactStatLabel}>Hoy</Text>
+                </View>
+              </AnimatedView>
+              <AnimatedView animation="scale" index={2} staggerDelay={100} delay={400}>
+                <View style={styles.compactStatItem}>
+                  <AnimatedNumber value={stats.totalStreak} style={styles.compactStatNumber} duration={800} />
+                  <Text style={styles.compactStatLabel}>Racha</Text>
+                </View>
+              </AnimatedView>
             </View>
-            <View style={styles.compactStatItem}>
-              <Text style={styles.compactStatNumber}>{stats.completedToday}</Text>
-              <Text style={styles.compactStatLabel}>Hoy</Text>
-            </View>
-            <View style={styles.compactStatItem}>
-              <Text style={styles.compactStatNumber}>{stats.totalStreak}</Text>
-              <Text style={styles.compactStatLabel}>Racha</Text>
-            </View>
-          </View>
+          </AnimatedView>
         </View>
         {state.habits.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyTitle}>No tienes hábitos aún</Text>
-            <Text style={styles.emptySubtitle}>
-              Crea tu primer hábito para comenzar tu journey
-            </Text>
-            <TouchableOpacity
-              style={styles.createFirstButton}
-              onPress={handleAddHabitPress}
-            >
-              <Text style={styles.createFirstButtonText}>Crear mi primer hábito</Text>
-            </TouchableOpacity>
-          </View>
+          <AnimatedView animation="fadeSlideUp" delay={300}>
+            <View style={styles.emptyContainer}>
+              <AnimatedView animation="bounce" delay={500}>
+                <Ionicons name="leaf-outline" size={64} color="#4ECDC4" style={{ marginBottom: 16 }} />
+              </AnimatedView>
+              <Text style={styles.emptyTitle}>No tienes hábitos aún</Text>
+              <Text style={styles.emptySubtitle}>
+                Crea tu primer hábito para comenzar tu journey
+              </Text>
+              <AnimatedView animation="scale" delay={700}>
+                <TouchableOpacity
+                  style={styles.createFirstButton}
+                  onPress={handleAddHabitPress}
+                >
+                  <Text style={styles.createFirstButtonText}>Crear mi primer hábito</Text>
+                </TouchableOpacity>
+              </AnimatedView>
+            </View>
+          </AnimatedView>
         ) : (
           <>
             {/* Hábitos Activos */}
             {activeHabits.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Hábitos Activos</Text>
-                {activeHabits.map((habit) => {
+                <AnimatedView animation="slideRight" delay={400}>
+                  <Text style={styles.sectionTitle}>Hábitos Activos</Text>
+                </AnimatedView>
+                {activeHabits.map((habit, index) => {
                   const isCompletedToday = HabitLogic.wasCompletedToday(habit.id, state.completions);
                   const availableChallenges = state.challenges.filter(c => !c.isCompleted);
 
                   return (
-                    <HabitCard
+                    <AnimatedView
                       key={habit.id}
-                      habit={habit}
-                      isCompletedToday={isCompletedToday}
-                      onComplete={handleCompleteHabit}
-                      onReactivate={handleReactivateHabit}
-                      onPress={handleHabitPress}
-                      availableChallenges={availableChallenges}
-                      completions={state.completions}
-                    />
+                      animation="fadeSlideUp"
+                      index={index}
+                      staggerDelay={80}
+                      delay={500}
+                    >
+                      <HabitCard
+                        habit={habit}
+                        isCompletedToday={isCompletedToday}
+                        onComplete={handleCompleteHabit}
+                        onReactivate={handleReactivateHabit}
+                        onPress={handleHabitPress}
+                        availableChallenges={availableChallenges}
+                        completions={state.completions}
+                      />
+                    </AnimatedView>
                   );
                 })}
               </View>
@@ -283,94 +442,100 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             {/* Hábitos Inactivos */}
             {inactiveHabits.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Hábitos Inactivos</Text>
-                <Text style={styles.sectionSubtitle}>
-                  Toca para activar
-                </Text>
-                {inactiveHabits.map((habit) => (
-                  <TouchableOpacity
+                <AnimatedView animation="slideRight" delay={600}>
+                  <View>
+                    <Text style={styles.sectionTitle}>Hábitos Inactivos</Text>
+                  </View>
+                </AnimatedView>
+                {inactiveHabits.map((habit, index) => (
+                  <AnimatedView
                     key={habit.id}
-                    onPress={() => handleActivateHabit(habit.id)}
-                    activeOpacity={0.7}
+                    animation="fadeSlideUp"
+                    index={index}
+                    staggerDelay={80}
+                    delay={700}
                   >
-                    <HabitCard
-                      habit={habit}
-                      isCompletedToday={false}
-                      onComplete={handleCompleteHabit}
-                      onReactivate={handleReactivateHabit}
-                      onPress={handleHabitPress}
-                      availableChallenges={[]}
-                      completions={state.completions}
-                    />
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleActivateHabit(habit.id)}
+                      activeOpacity={0.7}
+                    >
+                      <HabitCard
+                        habit={habit}
+                        isCompletedToday={false}
+                        onComplete={handleCompleteHabit}
+                        onReactivate={handleReactivateHabit}
+                        onPress={handleHabitPress}
+                        availableChallenges={[]}
+                        completions={state.completions}
+                      />
+                    </TouchableOpacity>
+                  </AnimatedView>
                 ))}
               </View>
             )}
 
             {/* Retos para Obtener Vidas */}
             <View style={styles.section}>
-              <View style={styles.sectionHeaderWithIcon}>
-                <Ionicons name="trophy" size={20} color="#F1C40F" />
-                <Text style={styles.sectionTitle}>Retos para Obtener Vidas</Text>
-              </View>
-              <Text style={styles.sectionSubtitle}>
-                Completa retos para ganar vidas extras
-              </Text>
-              
+
               <View style={styles.challengesWrapper}>
-                <View style={[
-                  styles.challengesGrid,
-                  !showAllChallenges && styles.challengesGridCollapsed
-                ]}>
-                  {state.lifeChallenges && state.lifeChallenges.map((challenge, index) => (
-                    <LifeChallengeCard
-                      key={challenge.id}
-                      challenge={challenge}
-                      canRedeem={challengeAvailability.get(challenge.id) || false}
-                      onRedeem={handleRedeemChallenge}
-                    />
-                  ))}
-                </View>
-                
-                {!showAllChallenges && state.lifeChallenges && state.lifeChallenges.length > 6 && (
-                  <View style={styles.fadeOverlay}>
-                    <View style={[styles.fadeLayer, { opacity: 0 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.1 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.2 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.3 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.4 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.5 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.6 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.7 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.8 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 0.9 }]} />
-                    <View style={[styles.fadeLayer, { opacity: 1 }]} />
+                <AnimatedCollapsible
+                  expanded={showAllChallenges}
+                  collapsedHeight={350}
+                >
+                  <View style={styles.challengesGrid}>
+                    {state.lifeChallenges && state.lifeChallenges.map((challenge, index) => (
+                      <AnimatedView
+                        key={challenge.id}
+                        animation="scale"
+                        index={index}
+                        staggerDelay={60}
+                        delay={900}
+                        style={{ width: '31%', marginHorizontal: 4 }}
+                      >
+                        <LifeChallengeCard
+                          challenge={challenge}
+                          currentLives={state.user.lives}
+                          maxLives={state.user.maxLives}
+                          onRedeem={handleRedeemChallenge}
+                        />
+                      </AnimatedView>
+                    ))}
                   </View>
+                </AnimatedCollapsible>
+
+                {state.lifeChallenges && state.lifeChallenges.length > 6 && (
+                  <AnimatedFadeOverlay
+                    visible={!showAllChallenges}
+                    height={120}
+                    color={theme.colors.background}
+                  />
                 )}
               </View>
 
               {state.lifeChallenges && state.lifeChallenges.length > 6 && (
-                <TouchableOpacity
-                  style={styles.toggleButton}
+                <AnimatedToggleButton
+                  expanded={showAllChallenges}
                   onPress={() => setShowAllChallenges(!showAllChallenges)}
-                >
-                  <Text style={styles.toggleButtonText}>
-                    {showAllChallenges ? '▲ Ocultar retos' : '▼ Ver todos los retos'}
-                  </Text>
-                </TouchableOpacity>
+                  expandedText="Ocultar retos"
+                  collapsedText="Ver todos los retos"
+                />
               )}
             </View>
           </>
         )}
+        </>
+        )}
       </ScrollView>
 
-      {/* Botón flotante para agregar hábito */}
-      <TouchableOpacity
-        style={styles.fab}
+      {/* Botón flotante animado para agregar hábito */}
+      <AnimatedFAB
         onPress={handleAddHabitPress}
+        backgroundColor="#4ECDC4"
+        size={56}
+        pulseOnMount={true}
       >
         <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
+      </AnimatedFAB>
 
       {/* Modal de autenticación */}
       <AuthModal
@@ -397,6 +562,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         onComplete={handleCompleteConfirm}
       />
 
+      {/* Celebración de primer completion */}
+      <FirstCompletionCelebration
+        visible={firstCompletionCelebration.visible}
+        habitName={firstCompletionCelebration.habitName}
+        onClose={() => setFirstCompletionCelebration({ visible: false, habitName: '' })}
+      />
+
       {/* Notificación de Life Challenge obtenido */}
       {lifeChallengeNotification && (
         <LifeChallengeNotification
@@ -405,10 +577,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           description={lifeChallengeNotification.description}
           reward={lifeChallengeNotification.reward}
           onDismiss={() => setLifeChallengeNotification(null)}
-          onPress={() => {
-            navigation?.navigate('LifeChallenges');
-            setLifeChallengeNotification(null);
-          }}
+          onPress={() => setLifeChallengeNotification(null)}
         />
       )}
 
@@ -421,6 +590,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         weeklyXp={leagueChange?.weeklyXp || 0}
         onDismiss={dismissLeagueChange}
       />
+
+      {/* Modal de Pending Redemption */}
+      <PendingRedemptionModal
+        visible={showPendingModal}
+        pending={selectedPendingRedemption}
+        onClose={handleClosePendingModal}
+        onRedeemLife={handlePendingRedeemLife}
+        onSelectChallenge={handlePendingRedeemChallenge}
+        onRefreshNeeded={refreshState}
+        actionLoading={pendingActionLoading}
+      />
     </View>
   );
 };
@@ -429,6 +609,27 @@ const baseStyles = {
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+  },
+  syncIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(78, 205, 196, 0.15)',
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  syncIndicatorText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#4ECDC4',
+  },
+  pendingRedemptionsContainer: {
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   topInfoContainer: {
     paddingHorizontal: 16,
@@ -585,25 +786,6 @@ const baseStyles = {
     fontSize: 16,
     fontWeight: '600',
   },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#4ECDC4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    elevation: 8,
-  },
   fabText: {
     color: '#FFFFFF',
     fontSize: 24,
@@ -638,44 +820,6 @@ const baseStyles = {
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
-  },
-  challengesGridCollapsed: {
-    maxHeight: 350, // Altura para mostrar ~1.5 filas
-    overflow: 'hidden',
-  },
-  fadeOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 150,
-    pointerEvents: 'none',
-  },
-  fadeLayer: {
-    height: 15,
-    backgroundColor: '#F8F9FA',
-  },
-  toggleButton: {
-    alignSelf: 'center',
-    backgroundColor: '#4ECDC4',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
-    marginTop: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 3,
-  },
-  toggleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
   },
 } as const;
 

@@ -112,8 +112,18 @@ export class AuthService {
         throw new Error('No hay token de autenticación');
       }
 
-      const response = await apiClient.get<AuthUser>('/auth/me');
-      return response.data;
+      const response = await apiClient.get<any>('/auth/me');
+      const data = response.data;
+
+      // Mapear username a name (el backend usa username, el frontend usa name)
+      return {
+        id: data.id,
+        name: data.username || data.name,
+        email: data.email,
+        theme: data.theme,
+        font_size: data.font_size,
+        created_at: data.created_at,
+      };
     } catch (error: any) {
       console.error('Error getting user:', error);
       throw error;

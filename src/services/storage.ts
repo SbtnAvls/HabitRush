@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, User, Habit, Challenge, HabitCompletion, LifeChallenge, Settings } from '../types';
-import { LIFE_CHALLENGES } from './lifeChallenges';
+import { AppState, User, Habit, Challenge, HabitCompletion, LifeChallenge, Settings, PendingRedemption } from '../types';
 
 const STORAGE_KEYS = {
   APP_STATE: 'habitRush_app_state',
@@ -9,6 +8,8 @@ const STORAGE_KEYS = {
   COMPLETIONS: 'habitRush_completions',
   CHALLENGES: 'habitRush_challenges',
   AUTH_TOKEN: 'habitRush_auth_token',
+  THEME: 'habitRush_theme', // Clave separada para cargar el tema rápidamente
+  FONT_SIZE: 'habitRush_font_size', // Clave separada para el tamaño de fuente (puede ser número o preset)
 };
 
 // Datos iniciales por defecto
@@ -28,7 +29,7 @@ const defaultUser: User = {
 
 const defaultSettings: Settings = {
   fontSize: 'medium',
-  theme: 'light',
+  theme: 'dark', // Dark mode por defecto para evitar flash de tema claro
 };
 
 export class StorageService {
@@ -55,6 +56,7 @@ export class StorageService {
           targetDate: habit.targetDate ? new Date(habit.targetDate) : undefined,
           lastCompletedDate: habit.lastCompletedDate ? new Date(habit.lastCompletedDate) : undefined,
           createdAt: new Date(habit.createdAt),
+          isBlocked: habit.isBlocked ?? false, // Migración: hábitos antiguos no están bloqueados
         }));
         state.user.createdAt = new Date(state.user.createdAt);
         state.user.leagueWeekStart = state.user.leagueWeekStart 
@@ -68,15 +70,31 @@ export class StorageService {
           ...completion,
           date: new Date(completion.date),
         }));
-        state.lifeChallenges = state.lifeChallenges.map((challenge: any) => ({
-          ...challenge,
-          completedCount: challenge.completedCount,
+        // Migrar lifeChallenges antiguos o mantener los nuevos
+        // Los nuevos tienen: status, canRedeem, obtainedAt, redeemedAt
+        // Los antiguos tenían: completedCount, verificationFunction
+        state.lifeChallenges = (state.lifeChallenges || []).map((challenge: any) => ({
+          id: challenge.id,
+          title: challenge.title,
+          description: challenge.description,
+          reward: challenge.reward,
+          redeemable: challenge.redeemable || challenge.redeemable_type,
+          icon: challenge.icon,
+          // Nuevos campos del backend
+          status: challenge.status || 'pending',
+          canRedeem: challenge.canRedeem || false,
+          obtainedAt: challenge.obtainedAt || null,
+          redeemedAt: challenge.redeemedAt || null,
         }));
         // Asegurar compatibilidad con configuraciones
         if (!state.settings) {
           state.settings = { ...defaultSettings };
         } else {
           state.settings = { ...defaultSettings, ...state.settings };
+        }
+        // Asegurar compatibilidad con pendingRedemptions
+        if (!state.pendingRedemptions) {
+          state.pendingRedemptions = [];
         }
         return state;
       }
@@ -94,8 +112,9 @@ export class StorageService {
       user: defaultUser,
       completions: [],
       challenges: [], // Los challenges vienen del backend cuando el usuario está autenticado
-      lifeChallenges: LIFE_CHALLENGES.map(lc => ({ ...lc })),
+      lifeChallenges: [], // Los life challenges vienen del backend con su estado (status, canRedeem)
       settings: { ...defaultSettings },
+      pendingRedemptions: [], // Pending redemptions vienen del backend
     };
   }
 
@@ -154,6 +173,7 @@ export class StorageService {
           targetDate: habit.targetDate ? new Date(habit.targetDate) : undefined,
           lastCompletedDate: habit.lastCompletedDate ? new Date(habit.lastCompletedDate) : undefined,
           createdAt: new Date(habit.createdAt),
+          isBlocked: habit.isBlocked ?? false, // Migración: hábitos antiguos no están bloqueados
         }));
       }
       return [];
@@ -229,6 +249,59 @@ export class StorageService {
       console.error('Error removing auth token:', error);
       throw error;
     }
+  }
+
+  // Guardar tema de forma independiente (para carga rápida)
+  static async saveTheme(theme: 'light' | 'dark'): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.THEME, theme);
+    } catch (error) {
+      console.error('Error saving theme:', error);
+      // No lanzar error, no es crítico
+    }
+  }
+
+  // Cargar tema de forma independiente (para carga rápida al inicio)
+  static async loadTheme(): Promise<'light' | 'dark'> {
+    try {
+      const theme = await AsyncStorage.getItem(STORAGE_KEYS.THEME);
+      if (theme === 'light' || theme === 'dark') {
+        return theme;
+      }
+      return defaultSettings.theme; // 'dark' por defecto
+    } catch (error) {
+      console.error('Error loading theme:', error);
+      return defaultSettings.theme;
+    }
+  }
+
+  // Guardar tamaño de fuente de forma independiente (para preservar valor exacto del slider)
+  static async saveFontSize(fontSize: number | 'small' | 'medium' | 'large'): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.FONT_SIZE, JSON.stringify(fontSize));
+    } catch (error) {
+      console.error('Error saving font size:', error);
+      // No lanzar error, no es crítico
+    }
+  }
+
+  // Cargar tamaño de fuente de forma independiente
+  static async loadFontSize(): Promise<number | 'small' | 'medium' | 'large' | null> {
+    try {
+      const fontSizeStr = await AsyncStorage.getItem(STORAGE_KEYS.FONT_SIZE);
+      if (fontSizeStr) {
+        return JSON.parse(fontSizeStr);
+      }
+      return null; // null indica que no hay valor guardado
+    } catch (error) {
+      console.error('Error loading font size:', error);
+      return null;
+    }
+  }
+
+  // Obtener tema por defecto
+  static getDefaultTheme(): 'light' | 'dark' {
+    return defaultSettings.theme;
   }
 }
 

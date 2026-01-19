@@ -82,7 +82,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const response = await AuthService.login(credentials);
       console.log(`Login successful, token expires in ${response.expiresIn} seconds`);
 
-      Alert.alert('Éxito', '¡Bienvenido de nuevo!');
       resetForm();
       onAuthSuccess();
     } catch (error: any) {
@@ -130,7 +129,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const response = await AuthService.register(credentials);
       console.log(`Registration successful, token expires in ${response.expiresIn} seconds`);
 
-      Alert.alert('Éxito', '¡Cuenta creada exitosamente!');
       resetForm();
       onAuthSuccess();
     } catch (error: any) {
@@ -168,7 +166,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       // Evitar actualizar estado si el componente se desmontó
       if (!isMountedRef.current) return;
 
-      Alert.alert('Éxito', '¡Bienvenido!');
       resetForm();
       onAuthSuccess();
     } catch (error: any) {

@@ -1,7 +1,35 @@
-import { AppState, LifeChallenge, Habit, HabitCompletion } from '../types';
+/**
+ * @deprecated Este archivo está deprecado.
+ *
+ * La lista de Life Challenges y la verificación de requisitos ahora se maneja
+ * completamente en el BACKEND. El frontend debe usar:
+ *
+ * - LifeChallengeService.getLifeChallengesWithStatus() para obtener los retos con su estado
+ * - challenge.canRedeem para verificar si un reto se puede canjear
+ * - challenge.status para ver el estado actual ('pending' | 'obtained' | 'redeemed')
+ *
+ * Ver: /docs/FRONTEND_LIFE_CHALLENGES_API.md en el backend
+ */
 
-// Definición de todos los retos
-export const LIFE_CHALLENGES: LifeChallenge[] = [
+import { AppState, Habit, HabitCompletion } from '../types';
+
+// Tipo local para compatibilidad con código antiguo (NO USAR)
+interface LegacyLifeChallenge {
+  id: string;
+  title: string;
+  description: string;
+  reward: number;
+  redeemable: 'once' | 'unlimited';
+  completedCount: number;
+  icon: string;
+  verificationFunction: string;
+}
+
+/**
+ * @deprecated Lista de retos hardcodeada - ya no se usa
+ * Los retos ahora vienen del backend via GET /api/life-challenges?withStatus=true
+ */
+export const LIFE_CHALLENGES: LegacyLifeChallenge[] = [
   {
     id: 'challenge_week_no_lives',
     title: 'Semana Perfecta',
@@ -104,6 +132,11 @@ export const LIFE_CHALLENGES: LifeChallenge[] = [
   },
 ];
 
+/**
+ * @deprecated Esta clase está deprecada.
+ * La verificación de Life Challenges ahora se hace completamente en el BACKEND.
+ * El frontend debe usar challenge.canRedeem y challenge.status directamente.
+ */
 export class LifeChallengeVerifier {
   // 1. Semana sin perder vidas
   static verifyWeekWithoutLosingLives(state: AppState): boolean {
@@ -258,12 +291,11 @@ export class LifeChallengeVerifier {
   }
 
   // 7. 5 retos de una sola vez completados
+  // @deprecated - Esta verificación ahora se hace en el backend
   static verifyFiveOnceChallenges(state: AppState): boolean {
-    const onceCompleted = state.lifeChallenges.filter(
-      lc => lc.redeemable === 'once' && lc.completedCount > 0
-    );
-
-    return onceCompleted.length >= 5;
+    // Esta función ya no funciona porque lifeChallenges ahora tiene el nuevo formato
+    // La verificación real se hace en el backend
+    return false;
   }
 
   // 8. Dos meses sin quedarse sin vidas
@@ -304,7 +336,8 @@ export class LifeChallengeVerifier {
   }
 
   // Función principal para verificar un reto
-  static verifyChallenge(challenge: LifeChallenge, state: AppState): boolean {
+  // @deprecated - La verificación ahora se hace en el backend
+  static verifyChallenge(challenge: LegacyLifeChallenge, state: AppState): boolean {
     switch (challenge.verificationFunction) {
       case 'verifyWeekWithoutLosingLives':
         return this.verifyWeekWithoutLosingLives(state);

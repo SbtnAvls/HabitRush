@@ -8,6 +8,8 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { HabitDetailScreen } from '../screens/HabitDetailScreen';
 import { LeaguesScreen } from '../screens/LeaguesScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { PublicProfileScreen } from '../screens/PublicProfileScreen';
+import { FollowListScreen } from '../screens/FollowListScreen';
 import { useTheme } from '../theme/useTheme';
 import { useFontScale } from '../theme/useFontScale';
 import { AppTheme } from '../theme';
@@ -57,6 +59,8 @@ const ProfileStackScreen: React.FC<{ theme: AppTheme }> = ({ theme }) => (
   >
     <Stack.Screen name="ProfileMain" component={ProfileScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
+    <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+    <Stack.Screen name="FollowList" component={FollowListScreen} />
   </Stack.Navigator>
 );
 

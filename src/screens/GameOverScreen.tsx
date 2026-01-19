@@ -13,17 +13,16 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import { useTheme } from '../theme/useTheme';
 import { RevivalChallengeFlow } from '../components/RevivalChallengeFlow';
-import { LifeChallengeRedemption } from '../components/LifeChallengeRedemption';
 import { useAppContext } from '../context/AppContext';
 
-type RevivalMethod = 'none' | 'challenge' | 'life-challenge';
+type RevivalMethod = 'none' | 'challenge';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 export const GameOverScreen: React.FC = () => {
   const styles = useThemedStyles(baseStyles);
   const theme = useTheme();
-  const { checkAuthentication, refreshState } = useAppContext();
+  const { refreshState } = useAppContext();
 
   const [revivalMethod, setRevivalMethod] = useState<RevivalMethod>('none');
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -79,16 +78,6 @@ export const GameOverScreen: React.FC = () => {
     );
   }
 
-  // Flujo de resurrección con life challenges
-  if (revivalMethod === 'life-challenge') {
-    return (
-      <LifeChallengeRedemption
-        onSuccess={handleRevivalSuccess}
-        onBack={() => setRevivalMethod('none')}
-      />
-    );
-  }
-
   // Pantalla principal de Game Over
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -125,11 +114,11 @@ export const GameOverScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* Opciones de resurrección */}
+        {/* Opción de resurrección */}
         <View style={styles.revivalOptions}>
-          <Text style={styles.optionsTitle}>Elige cómo revivir:</Text>
+          <Text style={styles.optionsTitle}>¿Cómo revivir?</Text>
 
-          {/* Opción 1: Challenge con pruebas */}
+          {/* Única opción: Reto de penitencia */}
           <TouchableOpacity
             style={styles.optionCard}
             onPress={() => setRevivalMethod('challenge')}
@@ -139,35 +128,13 @@ export const GameOverScreen: React.FC = () => {
               <Icon name="target" size={40} color="#4ECDC4" />
             </View>
             <View style={styles.optionTextContainer}>
-              <Text style={styles.optionTitle}>Completar Reto con Pruebas</Text>
+              <Text style={styles.optionTitle}>Completar Reto de Penitencia</Text>
               <Text style={styles.optionDescription}>
-                Completa un reto asignado y envía pruebas (foto/texto) para ser validado por IA
+                Completa un reto asignado y envía pruebas (foto/texto) para ser validado
               </Text>
               <View style={styles.optionBadge}>
                 <Icon name="camera" size={14} color="#4ECDC4" />
                 <Text style={styles.optionBadgeText}>Requiere pruebas</Text>
-              </View>
-            </View>
-            <Icon name="chevron-right" size={24} color="#CBD5E1" />
-          </TouchableOpacity>
-
-          {/* Opción 2: Life Challenge */}
-          <TouchableOpacity
-            style={styles.optionCard}
-            onPress={() => setRevivalMethod('life-challenge')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.optionIconContainer}>
-              <Icon name="star" size={40} color="#FFB800" />
-            </View>
-            <View style={styles.optionTextContainer}>
-              <Text style={styles.optionTitle}>Redimir Life Challenge</Text>
-              <Text style={styles.optionDescription}>
-                Si tienes Life Challenges disponibles, puedes canjearlos por vidas instantáneamente
-              </Text>
-              <View style={styles.optionBadge}>
-                <Icon name="lightning-bolt" size={14} color="#FFB800" />
-                <Text style={styles.optionBadgeText}>Instantáneo</Text>
               </View>
             </View>
             <Icon name="chevron-right" size={24} color="#CBD5E1" />
@@ -178,8 +145,8 @@ export const GameOverScreen: React.FC = () => {
         <View style={styles.tipsContainer}>
           <Text style={styles.tipsTitle}>💡 Consejo:</Text>
           <Text style={styles.tipsText}>
-            Los Life Challenges se obtienen automáticamente al cumplir ciertos logros.
-            ¡Mantén tus hábitos al día para desbloquearlos!
+            Completa tus hábitos a tiempo para no perder vidas.
+            Los Life Challenges te ayudan a recuperar vidas mientras estés vivo, ¡pero no pueden usarse para revivir!
           </Text>
         </View>
       </Animated.View>

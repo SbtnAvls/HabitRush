@@ -7,8 +7,10 @@ export interface Habit {
   currentStreak: number;
   frequency: Frequency;
   progressType: ProgressType;
+  targetValue?: number; // Obligatorio para time (minutos) y count (cantidad), null para yes_no
   isActive: boolean; // Activo por el sistema (por vidas)
   activeByUser: boolean; // Activo/inactivo por decision del usuario
+  isBlocked: boolean; // Bloqueado por fallo - requiere resolver pending redemption
   lastCompletedDate?: Date;
   createdAt: Date;
 }
@@ -66,15 +68,21 @@ export interface Challenge {
   isCompleted?: boolean;
 }
 
+// Estado de un Life Challenge según el backend
+export type LifeChallengeStatus = 'pending' | 'obtained' | 'redeemed';
+
 export interface LifeChallenge {
   id: string;
   title: string;
   description: string;
   reward: number; // Vidas que otorga
   redeemable: 'once' | 'unlimited'; // Si se puede completar una sola vez o ilimitadamente
-  completedCount: number; // Cuantas veces se ha completado
-  icon: string; // Emoji para el reto
-  verificationFunction: string; // Nombre de la funcion que verifica el reto
+  icon: string; // Icono del reto
+  // Campos del backend (estado evaluado por el servidor)
+  status: LifeChallengeStatus; // Estado actual del reto para el usuario
+  canRedeem: boolean; // TRUE si el usuario puede canjear AHORA (evaluado por backend)
+  obtainedAt?: string | null; // Fecha cuando se obtuvo (si aplica)
+  redeemedAt?: string | null; // Ultima fecha de canje (si aplica)
 }
 
 export interface HabitCompletion {
@@ -96,8 +104,10 @@ export interface LeagueCompetitor {
 
 export type ThemePreference = 'light' | 'dark';
 
+export type FontSizePreset = 'small' | 'medium' | 'large';
+
 export interface Settings {
-  fontSize: 'small' | 'medium' | 'large';
+  fontSize: FontSizePreset | number; // Puede ser preset o valor numerico (0.8 - 1.3)
   theme: ThemePreference;
 }
 
@@ -108,4 +118,94 @@ export interface AppState {
   challenges: Challenge[];
   lifeChallenges: LifeChallenge[];
   settings: Settings;
+  pendingRedemptions: PendingRedemption[];
+}
+
+// ============================================
+// Pending Redemptions (24h grace period)
+// ============================================
+
+export type PendingRedemptionStatus =
+  | 'pending'           // Tiene 24h para decidir
+  | 'challenge_assigned' // Eligió hacer un challenge, debe completarlo
+  | 'redeemed_challenge' // Completó el challenge exitosamente
+  | 'redeemed_life'      // Aceptó perder la vida
+  | 'expired';           // No decidió a tiempo (perdió vida automáticamente)
+
+export interface AvailableChallenge {
+  id: string;
+  title: string;
+  description: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+}
+
+export interface AssignedChallenge {
+  id: string;
+  title: string;
+  description: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  proof_text?: string;
+  proof_image_url?: string;
+  validation_status?: 'pending' | 'approved' | 'rejected';
+}
+
+// ============================================
+// Challenge Validation (Async System)
+// ============================================
+
+export type ChallengeValidationStatus =
+  | 'pending_review'    // En espera de revisión
+  | 'approved_manual'   // Aprobado por admin
+  | 'approved_ai'       // Aprobado por IA
+  | 'rejected_manual'   // Rechazado por admin
+  | 'rejected_ai';      // Rechazado por IA
+
+export interface ChallengeValidation {
+  id: string;
+  status: ChallengeValidationStatus;
+  created_at: string;
+  expires_at: string;
+  reviewed_at: string | null;
+  reviewer_notes: string | null;
+  ai_result: {
+    reasoning: string;
+    confidence_score?: number;
+  } | null;
+}
+
+export interface SubmitChallengeProofResponse {
+  success: boolean;
+  validation_id: string;
+  status: 'pending_review';
+  estimated_review_time: string;
+}
+
+export interface ValidationStatusResponse {
+  success: boolean;
+  has_validation: boolean;
+  validation: ChallengeValidation | null;
+}
+
+// Error codes del backend para validación de challenges
+export type ChallengeValidationErrorCode =
+  | 'VALIDATION_PENDING'
+  | 'MAX_RETRIES_EXCEEDED'
+  | 'REDEMPTION_TIME_EXPIRED'
+  | 'REDEMPTION_EXPIRED'
+  | 'IMAGE_TOO_LARGE'
+  | 'INVALID_IMAGE_FORMAT'
+  | 'NO_CHALLENGE_ASSIGNED'
+  | 'ALREADY_COMPLETED';
+
+export interface PendingRedemption {
+  id: string;
+  habit_id: string;
+  habit_name: string;
+  failed_date: string;
+  expires_at: string;
+  status: PendingRedemptionStatus;
+  has_challenge_assigned: boolean;
+  assigned_challenge: AssignedChallenge | null;
+  available_challenges: AvailableChallenge[];
+  time_remaining_ms: number;
 }

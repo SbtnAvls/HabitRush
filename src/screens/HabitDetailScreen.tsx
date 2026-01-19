@@ -466,25 +466,28 @@ export const HabitDetailScreen: React.FC<any> = ({
           <Ionicons name="chevron-back" size={28} color={theme.colors.textPrimary} />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={handleToggleStatus}
-          style={[
-            styles.statusToggle,
-            { backgroundColor: habit.activeByUser ? theme.colors.danger + '15' : theme.colors.success + '15' }
-          ]}
-        >
-          <Ionicons
-            name={habit.activeByUser ? 'pause-circle-outline' : 'play-circle-outline'}
-            size={20}
-            color={habit.activeByUser ? theme.colors.danger : theme.colors.success}
-          />
-          <Text style={[
-            styles.statusToggleText,
-            { color: habit.activeByUser ? theme.colors.danger : theme.colors.success }
-          ]}>
-            {habit.activeByUser ? 'Desactivar' : 'Activar'}
-          </Text>
-        </TouchableOpacity>
+        {/* Ocultar botón si el hábito está bloqueado */}
+        {!habit.isBlocked && (
+          <TouchableOpacity
+            onPress={handleToggleStatus}
+            style={[
+              styles.statusToggle,
+              { backgroundColor: habit.activeByUser ? theme.colors.danger + '15' : theme.colors.success + '15' }
+            ]}
+          >
+            <Ionicons
+              name={habit.activeByUser ? 'pause-circle-outline' : 'play-circle-outline'}
+              size={20}
+              color={habit.activeByUser ? theme.colors.danger : theme.colors.success}
+            />
+            <Text style={[
+              styles.statusToggleText,
+              { color: habit.activeByUser ? theme.colors.danger : theme.colors.success }
+            ]}>
+              {habit.activeByUser ? 'Desactivar' : 'Activar'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView

@@ -1,42 +1,58 @@
-import apiClient, { publicApiClient } from './apiClient';
-import { LifeChallenge } from '../types';
+import apiClient from './apiClient';
+import { LifeChallenge, LifeChallengeStatus } from '../types';
 
 /**
- * Interfaz de desafío de vida según la API del backend
+ * Interfaz de Life Challenge con estado del usuario (desde el backend)
+ * GET /life-challenges?withStatus=true
  */
-export interface LifeChallengeAPI {
-  id: string;
+export interface LifeChallengeWithStatusAPI {
+  life_challenge_id: string;
   title: string;
   description: string;
-  reward: number; // Número de vidas que otorga
+  reward: number;
   redeemable_type: 'once' | 'unlimited';
-  icon: string; // Nombre del icono (ej: "leaf", "star")
-  verification_function: string;
-  is_active: boolean;
+  icon: string;
+  status: 'pending' | 'obtained' | 'redeemed';
+  obtained_at: string | null;
+  redeemed_at: string | null;
+  can_redeem: boolean;
 }
 
 /**
  * Interfaz de historial de vida del usuario
+ * GET /users/me/life-history
  */
 export interface LifeHistoryAPI {
-  id: string;
-  user_id: string;
-  lives_change: number; // +/- número de vidas
-  current_lives: number; // Vidas actuales después del cambio
+  lives_change: number;
+  current_lives: number;
   reason: 'habit_missed' | 'challenge_completed' | 'life_challenge_redeemed';
   related_habit_id: string | null;
-  related_user_challenge_id: string | null;
-  related_life_challenge_id: string | null;
-  created_at: string;
 }
 
 /**
- * Respuesta al redimir un desafío de vida
+ * Respuesta al redimir un desafío de vida (éxito)
  */
 export interface RedeemLifeChallengeResponse {
   message: string;
   livesGained: number;
   currentLives: number;
+  success: boolean;
+}
+
+/**
+ * Códigos de error para redención de life challenges
+ */
+export type RedeemErrorCode = 'INSUFFICIENT_LIFE_SLOTS' | 'CHALLENGE_NOT_FOUND' | 'ALREADY_REDEEMED' | 'REQUIREMENTS_NOT_MET';
+
+/**
+ * Error al redimir un desafío de vida
+ */
+export interface RedeemLifeChallengeError {
+  message: string;
+  success: false;
+  code?: RedeemErrorCode;
+  requiredSlots?: number;
+  availableSlots?: number;
 }
 
 /**
@@ -44,53 +60,58 @@ export interface RedeemLifeChallengeResponse {
  */
 export class LifeChallengeMapper {
   /**
-   * Convierte LifeChallengeAPI del backend a LifeChallenge local
+   * Convierte LifeChallengeWithStatusAPI del backend a LifeChallenge local
    */
-  static fromAPI(lifeChallengeAPI: LifeChallengeAPI, completedCount: number = 0): LifeChallenge {
+  static fromAPIWithStatus(api: LifeChallengeWithStatusAPI): LifeChallenge {
     return {
-      id: lifeChallengeAPI.id,
-      title: lifeChallengeAPI.title,
-      description: lifeChallengeAPI.description,
-      reward: lifeChallengeAPI.reward,
-      redeemable: lifeChallengeAPI.redeemable_type,
-      completedCount: completedCount,
-      icon: lifeChallengeAPI.icon,
-      verificationFunction: lifeChallengeAPI.verification_function,
+      id: api.life_challenge_id,
+      title: api.title,
+      description: api.description,
+      reward: api.reward,
+      redeemable: api.redeemable_type,
+      icon: api.icon,
+      status: api.status as LifeChallengeStatus,
+      canRedeem: api.can_redeem,
+      obtainedAt: api.obtained_at,
+      redeemedAt: api.redeemed_at,
     };
   }
 }
 
 /**
- * Interfaz extendida con estado del desafío para el usuario
- */
-export interface LifeChallengeWithStatus extends LifeChallengeAPI {
-  status: 'pending' | 'obtained' | 'redeemed';
-  can_redeem: boolean;
-  obtained_at?: string;
-  redeemed_at?: string;
-}
-
-/**
  * Servicio para interactuar con la API de life challenges
+ *
+ * IMPORTANTE: El backend evalúa automáticamente si el usuario cumple cada reto.
+ * El frontend solo debe consumir los estados (status, can_redeem) y permitir el canje.
  */
 export class LifeChallengeService {
   /**
-   * Obtiene la lista de desafíos de vida activos
-   * Requiere autenticación para obtener el estado del usuario
+   * Obtiene los life challenges con su estado actual evaluado por el backend
+   * Este es el método PRINCIPAL que debe usarse para obtener los retos
+   *
+   * @returns Lista de LifeChallenge con status y canRedeem evaluados por el servidor
    */
-  static async getActiveLifeChallenges(): Promise<LifeChallenge[]> {
+  static async getLifeChallengesWithStatus(): Promise<LifeChallenge[]> {
     try {
-      const response = await apiClient.get<LifeChallengeAPI[]>('/life-challenges');
-      console.log('Active life challenges:', response.data);
-      return response.data.map(lc => LifeChallengeMapper.fromAPI(lc, 0));
+      const response = await apiClient.get<LifeChallengeWithStatusAPI[]>(
+        '/life-challenges?withStatus=true'
+      );
+      console.log('Life challenges with status:', response.data);
+      return response.data.map(lc => LifeChallengeMapper.fromAPIWithStatus(lc));
     } catch (error: any) {
-      console.error('Error getting active life challenges:', error);
+      console.error('Error getting life challenges with status:', error);
       throw error;
     }
   }
 
   /**
    * Redime un desafío de vida para recuperar vidas
+   * Solo funciona si canRedeem es true (evaluado por el backend)
+   *
+   * Errores posibles:
+   * - INSUFFICIENT_LIFE_SLOTS: No hay suficientes casillas de vida disponibles (solo para retos 'once')
+   * - ALREADY_REDEEMED: El reto ya fue canjeado
+   * - REQUIREMENTS_NOT_MET: No cumple los requisitos del reto
    */
   static async redeemLifeChallenge(
     lifeChallengeId: string
@@ -99,10 +120,20 @@ export class LifeChallengeService {
       const response = await apiClient.post<RedeemLifeChallengeResponse>(
         `/life-challenges/${lifeChallengeId}/redeem`
       );
-      
       return response.data;
     } catch (error: any) {
       console.error('Error redeeming life challenge:', error);
+
+      // Extraer información del error para mejor manejo en el UI
+      const errorData = error.response?.data as RedeemLifeChallengeError | undefined;
+      if (errorData) {
+        const customError = new Error(errorData.message) as any;
+        customError.code = errorData.code;
+        customError.requiredSlots = errorData.requiredSlots;
+        customError.availableSlots = errorData.availableSlots;
+        throw customError;
+      }
+
       throw error;
     }
   }
@@ -117,53 +148,6 @@ export class LifeChallengeService {
     } catch (error: any) {
       console.error('Error getting life history:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Obtiene los life challenges con su estado actual (pending/obtained/redeemed)
-   * Este endpoint requiere autenticación y devuelve el estado específico del usuario
-   */
-  static async getLifeChallengesWithStatus(): Promise<LifeChallengeWithStatus[]> {
-    try {
-      const response = await apiClient.get<LifeChallengeWithStatus[]>('/life-challenges/status');
-      return response.data;
-    } catch (error: any) {
-      console.error('Error getting life challenges status:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Obtiene los desafíos de vida con el contador de completaciones del usuario
-   * Combina la lista pública con el historial del usuario
-   */
-  static async getLifeChallengesWithProgress(): Promise<LifeChallenge[]> {
-    try {
-      // Obtener lista pública de desafíos
-      const challenges = await this.getActiveLifeChallenges();
-      
-      // Obtener historial del usuario
-      const history = await this.getLifeHistory();
-      
-      // Contar cuántas veces se redimió cada desafío
-      const completionCounts: Record<string, number> = {};
-      history.forEach(entry => {
-        if (entry.related_life_challenge_id && entry.lives_change > 0) {
-          completionCounts[entry.related_life_challenge_id] = 
-            (completionCounts[entry.related_life_challenge_id] || 0) + 1;
-        }
-      });
-      
-      // Actualizar completedCount de cada desafío
-      return challenges.map(challenge => ({
-        ...challenge,
-        completedCount: completionCounts[challenge.id] || 0,
-      }));
-    } catch (error: any) {
-      console.error('Error getting life challenges with progress:', error);
-      // Si falla obtener el historial (ej: no autenticado), devolver solo la lista pública
-      return this.getActiveLifeChallenges();
     }
   }
 }

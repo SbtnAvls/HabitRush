@@ -243,6 +243,7 @@ export class HabitLogic {
       targetValue: (progressType === 'time' || progressType === 'count') ? targetValue : undefined,
       isActive: activeByUser, // Si el usuario lo pone en pausa, isActive = false
       activeByUser,
+      isBlocked: false, // Nuevo hábito nunca está bloqueado
       createdAt: new Date(),
     };
 

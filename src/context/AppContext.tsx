@@ -35,7 +35,8 @@ interface AppContextType {
     progressType: any,
     activeByUser: boolean,
     description?: string,
-    targetDate?: Date
+    targetDate?: Date,
+    targetValue?: number
   ) => Promise<void>;
   completeChallenge: (challengeId: string, habitId: string) => Promise<void>;
   activateHabit: (habitId: string) => Promise<void>;
@@ -60,11 +61,40 @@ interface AppProviderProps {
 }
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
-  const [state, setState] = useState<AppState>(StorageService.getDefaultAppState());
+  // Inicializar con el tema por defecto (dark) para evitar flash de tema claro
+  const [state, setState] = useState<AppState>(() => {
+    const defaultState = StorageService.getDefaultAppState();
+    // El tema por defecto ya es 'dark' en StorageService
+    return defaultState;
+  });
   const [loading, setLoading] = useState(true);
+  const [themeLoaded, setThemeLoaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isHandlingSessionExpiry, setIsHandlingSessionExpiry] = useState(false);
+
+  // Cargar el tema y fontSize local inmediatamente al montar (antes de cargar todo el estado)
+  useEffect(() => {
+    const loadSettingsQuickly = async () => {
+      try {
+        const savedTheme = await StorageService.loadTheme();
+        const savedFontSize = await StorageService.loadFontSize();
+        setState(prev => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            theme: savedTheme,
+            ...(savedFontSize !== null && { fontSize: savedFontSize }),
+          },
+        }));
+      } catch (error) {
+        console.error('Error loading settings quickly:', error);
+      } finally {
+        setThemeLoaded(true);
+      }
+    };
+    loadSettingsQuickly();
+  }, []);
 
   const checkAuthentication = async (): Promise<boolean> => {
     try {
@@ -230,6 +260,21 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 league: userData.league_tier,
                 leagueWeekStart: new Date(userData.league_week_start),
               };
+
+              // Sincronizar tema del backend si existe
+              if (userData.theme) {
+                appState.settings.theme = userData.theme;
+                // Guardar localmente para carga rápida en futuro
+                await StorageService.saveTheme(userData.theme);
+              }
+              // fontSize: priorizar valor local sobre backend (el local preserva el valor exacto del slider)
+              const localFontSize = await StorageService.loadFontSize();
+              if (localFontSize !== null) {
+                appState.settings.fontSize = localFontSize;
+              } else if (userData.font_size) {
+                // Solo usar backend si no hay valor local
+                appState.settings.fontSize = userData.font_size;
+              }
             } catch (userError) {
               console.error('Error loading user data:', userError);
               // Si falla, usar datos por defecto
@@ -252,8 +297,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             const activeChallenges = await ChallengeService.getActiveChallenges();
             appState = { ...appState, challenges: activeChallenges };
 
-            // Cargar desafíos de vida con progreso
-            const lifeChallenges = await LifeChallengeService.getLifeChallengesWithProgress();
+            // Cargar desafíos de vida con estado del backend
+            // El backend evalúa automáticamente si el usuario cumple cada reto
+            const lifeChallenges = await LifeChallengeService.getLifeChallengesWithStatus();
             appState.lifeChallenges = lifeChallenges;
 
             // Cargar liga actual y weeklyXp (solo si está autenticado)
@@ -395,7 +441,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     progressType: any,
     activeByUser: boolean,
     description?: string,
-    targetDate?: Date
+    targetDate?: Date,
+    targetValue?: number
   ) => {
     try {
       // Si está autenticado, crear DIRECTAMENTE en el servidor
@@ -409,10 +456,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             activeByUser,
             description,
             targetDate,
-            state
+            state,
+            targetValue
           );
           const newHabit = tempState.habits[tempState.habits.length - 1];
-          
+
           // Crear en el backend
           const serverHabit = await HabitService.createHabit({
             name: newHabit.name,
@@ -421,6 +469,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             targetDate: newHabit.targetDate,
             frequency: newHabit.frequency,
             progressType: newHabit.progressType,
+            targetValue: newHabit.targetValue,
             activeByUser: newHabit.activeByUser,
           });
 
@@ -429,10 +478,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             ...state,
             habits: [...state.habits, serverHabit],
           };
-          
+
           setState(updatedState);
           // NO guardar en storage si está autenticado
-          
+
         } catch (syncError) {
           console.error('Error creating habit on server:', syncError);
           throw syncError;
@@ -446,7 +495,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           activeByUser,
           description,
           targetDate,
-          state
+          state,
+          targetValue
         );
         setState(updatedState);
         await StorageService.saveAppState(updatedState);
@@ -537,25 +587,27 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   const redeemLifeChallenge = async (challengeId: string) => {
     try {
-      // Si está autenticado, redimir en el servidor
-      if (isAuthenticated) {
-        const response = await LifeChallengeService.redeemLifeChallenge(challengeId);
-        
-        // Actualizar estado local con los datos del servidor
-        const updatedState = await HabitLogic.redeemLifeChallenge(challengeId, state);
-        
-        // Actualizar vidas con el valor del servidor
-        updatedState.user.lives = response.currentLives;
-        
-        setState(updatedState);
-        
-        // NO guardar en storage si está autenticado
-      } else {
-        // Usuario local: guardar en storage
-        const updatedState = await HabitLogic.redeemLifeChallenge(challengeId, state);
-        setState(updatedState);
-        await StorageService.saveAppState(updatedState);
+      if (!isAuthenticated) {
+        throw new Error('Debe estar autenticado para redimir life challenges');
       }
+
+      // Redimir en el servidor
+      const response = await LifeChallengeService.redeemLifeChallenge(challengeId);
+
+      // Recargar life challenges desde el backend para obtener estados actualizados
+      const updatedLifeChallenges = await LifeChallengeService.getLifeChallengesWithStatus();
+
+      // Actualizar estado con las vidas del servidor y los challenges actualizados
+      const updatedState: AppState = {
+        ...state,
+        user: {
+          ...state.user,
+          lives: response.currentLives,
+        },
+        lifeChallenges: updatedLifeChallenges,
+      };
+
+      setState(updatedState);
     } catch (error) {
       console.error('Error redeeming life challenge:', error);
       throw error;
@@ -573,6 +625,43 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       };
       setState(updatedState);
       await StorageService.saveAppState(updatedState);
+
+      // Guardar tema localmente para carga rápida en futuro
+      if (settings.theme) {
+        await StorageService.saveTheme(settings.theme);
+      }
+
+      // Guardar fontSize localmente para preservar valor exacto del slider
+      if (settings.fontSize !== undefined) {
+        await StorageService.saveFontSize(settings.fontSize);
+      }
+
+      // Sincronizar con el backend si está autenticado
+      if (isAuthenticated) {
+        try {
+          const updateData: { theme?: 'light' | 'dark'; font_size?: 'small' | 'medium' | 'large' } = {};
+          if (settings.theme) {
+            updateData.theme = settings.theme;
+          }
+          if (settings.fontSize !== undefined) {
+            // Convertir número a preset para el backend
+            const fontSizeToPreset = (size: typeof settings.fontSize): 'small' | 'medium' | 'large' => {
+              if (typeof size === 'string') return size;
+              // Convertir número al preset más cercano
+              if (size <= 0.92) return 'small';
+              if (size <= 1.07) return 'medium';
+              return 'large';
+            };
+            updateData.font_size = fontSizeToPreset(settings.fontSize);
+          }
+          if (Object.keys(updateData).length > 0) {
+            await UserService.updateProfile(updateData);
+          }
+        } catch (syncError) {
+          console.error('Error syncing settings to backend:', syncError);
+          // No lanzar error, los settings ya están guardados localmente
+        }
+      }
     } catch (error) {
       console.error('Error updating settings:', error);
     }

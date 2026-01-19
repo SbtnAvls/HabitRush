@@ -1,17 +1,18 @@
 /**
  * Configuración de la API
- * 
- * IMPORTANTE: Antes de usar la aplicación, debes cambiar la URL base de la API
- * por la URL de tu servidor backend.
+ *
+ * La URL se selecciona automáticamente:
+ * - __DEV__ true (Metro): localhost:3000 (requiere: adb reverse tcp:3000 tcp:3000)
+ * - __DEV__ false (APK): IP de la red local
  */
 
-// Cambia esta URL por la URL de tu servidor backend
-export const API_BASE_URL = 'http://172.19.32.1:3000';
+// URL para APK (dispositivo físico en red local)
+const PRODUCTION_URL = 'http://192.168.0.100:3000';
 
-// Ejemplo de URLs para diferentes entornos:
-// export const API_BASE_URL = 'https://api.habitrush.com'; // Producción
-// export const API_BASE_URL = 'http://localhost:3000'; // Desarrollo local
-// export const API_BASE_URL = 'http://192.168.1.100:3000'; // Desarrollo en red local (para testing en dispositivos físicos)
+// URL para desarrollo con Metro (emulador con adb reverse)
+const DEV_URL = 'http://localhost:3000';
+
+export const API_BASE_URL = __DEV__ ? DEV_URL : PRODUCTION_URL;
 
 /**
  * Endpoints de la API
@@ -22,11 +23,19 @@ export const API_ENDPOINTS = {
   LOGIN: '/auth/login',
   LOGOUT: '/auth/logout',
   ME: '/auth/me',
-  
+
   // Usuarios
   USER_ME: '/users/me',
   UPDATE_USER: '/users/me',
   DELETE_USER: '/users/me',
+
+  // Social
+  SOCIAL_SEARCH: '/social/search',
+  SOCIAL_FOLLOW: '/social/follow',
+  SOCIAL_FOLLOW_STATUS: '/social/follow-status',
+  SOCIAL_FOLLOWERS: '/social/followers',
+  SOCIAL_FOLLOWING: '/social/following',
+  SOCIAL_PROFILE: '/social/profile',
 };
 
 /**

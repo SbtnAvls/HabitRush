@@ -250,7 +250,10 @@ export const HabitCard: React.FC<HabitCardProps> = ({
     activateHabit(habit.id)
   }
 
+  const isBlocked = habit.isBlocked;
+
   const getStatusColor = () => {
+    if (isBlocked) return theme.colors.danger;
     if (!isActive) return theme.colors.danger;
     if (isCompletedToday) return theme.colors.primary;
     if (shouldCompleteToday) return theme.colors.warning;
@@ -258,6 +261,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   };
 
   const getStatusText = () => {
+    if (isBlocked) return 'Bloqueado';
     if (!isActive) return 'Inactivo';
     if (isCompletedToday) return 'Completado';
     if (shouldCompleteToday) return 'Pendiente';
@@ -297,7 +301,18 @@ export const HabitCard: React.FC<HabitCardProps> = ({
         {renderWeekTimeline()}
 
         <View style={styles.actions}>
-          {!!habit.activeByUser && shouldCompleteToday && !isCompletedToday && (
+          {/* Mostrar badge de bloqueado si el hábito está bloqueado */}
+          {isBlocked && (
+            <View style={styles.blockedBadge}>
+              <View style={styles.blockedContainer}>
+                <Ionicons name="lock-closed" size={16} color={theme.colors.textOnPrimary} />
+                <Text style={styles.blockedText}>Bloqueado</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Botón completar: solo si NO está bloqueado */}
+          {!isBlocked && !!habit.activeByUser && shouldCompleteToday && !isCompletedToday && (
             <TouchableWithoutFeedback
               onPress={handleComplete}
               onPressIn={handleButtonPressIn}
@@ -309,7 +324,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
             </TouchableWithoutFeedback>
           )}
 
-          {!habit.activeByUser && (
+          {!isBlocked && !habit.activeByUser && (
             <TouchableWithoutFeedback
               onPress={handleReactivate}
               onPressIn={handleButtonPressIn}
@@ -321,7 +336,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
             </TouchableWithoutFeedback>
           )}
 
-          {!!habit.activeByUser && isCompletedToday && (
+          {!isBlocked && !!habit.activeByUser && isCompletedToday && (
             <View style={styles.completedBadge}>
               <View style={styles.completedContainer}>
                 <Ionicons name="checkmark-circle" size={16} color={theme.colors.textOnPrimary} />
@@ -420,6 +435,12 @@ const createStyles = (theme: AppTheme, scale: number) => {
       paddingVertical: 8,
       borderRadius: 16,
     },
+    blockedBadge: {
+      backgroundColor: theme.colors.danger,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 16,
+    },
     buttonText: {
       color: theme.colors.textOnPrimary,
       fontWeight: '600',
@@ -431,6 +452,16 @@ const createStyles = (theme: AppTheme, scale: number) => {
       gap: 6,
     },
     completedText: {
+      color: theme.colors.textOnPrimary,
+      fontWeight: '600',
+      fontSize: 14 * scale,
+    },
+    blockedContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    blockedText: {
       color: theme.colors.textOnPrimary,
       fontWeight: '600',
       fontSize: 14 * scale,

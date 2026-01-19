@@ -7,11 +7,19 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "adb:reverse": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:3000 tcp:3000",
+    "dev": "npm run adb:reverse && react-native run-android",
+    "bundle:android": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res",
+    "build:apk": "cd android && gradlew assembleRelease",
+    "build:apk:debug": "npm run bundle:android && cd android && gradlew assembleDebug",
+    "build:aab": "cd android && gradlew bundleRelease",
+    "build:clean": "cd android && gradlew clean"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "^8.4.5",
+    "@react-native-community/slider": "^5.1.2",
     "@react-native-google-signin/google-signin": "^16.1.1",
     "@react-native/new-app-screen": "0.81.4",
     "@react-navigation/bottom-tabs": "^7.4.8",

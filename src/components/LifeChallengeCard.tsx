@@ -12,31 +12,32 @@ import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface LifeChallengeCardProps {
   challenge: LifeChallenge;
-  canRedeem: boolean;
+  currentLives: number;
+  maxLives: number;
   onRedeem: (challengeId: string) => void;
 }
 
 export const LifeChallengeCard: React.FC<LifeChallengeCardProps> = ({
   challenge,
-  canRedeem,
+  currentLives,
+  maxLives,
   onRedeem,
 }) => {
   const styles = useThemedStyles(baseStyles);
   const theme = useTheme();
-  const isCompleted = challenge.completedCount > 0;
-  const canStillRedeem = challenge.redeemable === 'unlimited' || challenge.completedCount === 0;
+
+  // Usar los campos del backend directamente
+  const canRedeem = challenge.canRedeem;
+  const isRedeemed = challenge.status === 'redeemed';
+  const isObtained = challenge.status === 'obtained';
+  const isPending = challenge.status === 'pending';
+
+  // Calcular casillas disponibles
+  const availableSlots = maxLives - currentLives;
 
   const handlePress = () => {
-    if (!canRedeem) {
-      Alert.alert(
-        'Reto No Completado',
-        'Aún no cumples con los requisitos para este reto. ¡Sigue esforzándote!',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    if (!canStillRedeem) {
+    // Si ya está redimido (solo para tipo 'once'), mostrar mensaje
+    if (isRedeemed && challenge.redeemable === 'once') {
       Alert.alert(
         'Reto Ya Completado',
         'Este reto solo se puede completar una vez y ya lo has redimido.',
@@ -45,9 +46,53 @@ export const LifeChallengeCard: React.FC<LifeChallengeCardProps> = ({
       return;
     }
 
+    // Si no puede redimir (pendiente o no cumple requisitos)
+    if (!canRedeem) {
+      Alert.alert(
+        'Reto No Disponible',
+        'Aún no cumples con los requisitos para este reto. ¡Sigue esforzándote!',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Para retos 'unlimited': verificar si hay casillas insuficientes y advertir
+    if (challenge.redeemable === 'unlimited' && challenge.reward > availableSlots) {
+      const livesToReceive = Math.min(challenge.reward, availableSlots);
+
+      if (availableSlots === 0) {
+        Alert.alert(
+          'Casillas de Vida Llenas',
+          `Ya tienes todas tus casillas de vida llenas (${currentLives}/${maxLives}).\n\n` +
+          `Este reto da +${challenge.reward} vida${challenge.reward > 1 ? 's' : ''}, pero no recibirás ninguna.\n\n` +
+          `Puedes desbloquear más casillas de vida completando ciertos retos especiales.`,
+          [{ text: 'Entendido' }]
+        );
+        return;
+      }
+
+      Alert.alert(
+        'Redención Parcial',
+        `Este reto da +${challenge.reward} vida${challenge.reward > 1 ? 's' : ''}, pero solo tienes ${availableSlots} casilla${availableSlots > 1 ? 's' : ''} disponible${availableSlots > 1 ? 's' : ''}.\n\n` +
+        `Recibirás solo +${livesToReceive} vida${livesToReceive > 1 ? 's' : ''}.\n\n` +
+        `Puedes desbloquear más casillas de vida completando ciertos retos especiales.\n\n` +
+        `¿Quieres canjear de todas formas?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Canjear',
+            style: 'default',
+            onPress: () => onRedeem(challenge.id),
+          },
+        ]
+      );
+      return;
+    }
+
+    // Flujo normal: puede redimir sin problemas
     Alert.alert(
       `¡Reto Completado! ${challenge.icon}`,
-      `${challenge.title}\n\nRecompensa: +${challenge.reward} vida\n\n¿Quieres redimir tu recompensa?`,
+      `${challenge.title}\n\nRecompensa: +${challenge.reward} vida${challenge.reward > 1 ? 's' : ''}\n\n¿Quieres redimir tu recompensa?`,
       [
         { text: 'Más tarde', style: 'cancel' },
         {
@@ -60,32 +105,36 @@ export const LifeChallengeCard: React.FC<LifeChallengeCardProps> = ({
   };
 
   const getStatusColor = () => {
-    if (!canStillRedeem) return theme.colors.textMuted;
+    if (isRedeemed && challenge.redeemable === 'once') return theme.colors.textMuted;
     if (canRedeem) return theme.colors.primary;
+    if (isObtained) return theme.colors.success || '#27AE60';
     return theme.colors.border;
   };
 
   const getStatusText = () => {
-    if (challenge.redeemable === 'unlimited') {
-      return `Completado ${challenge.completedCount}x`;
-    }
-    return isCompleted ? 'Completado' : 'Disponible';
+    if (isRedeemed && challenge.redeemable === 'once') return 'Completado';
+    if (canRedeem) return '¡Canjear!';
+    if (isObtained) return 'Obtenido';
+    return 'Pendiente';
   };
+
+  // Determinar si la tarjeta debe estar deshabilitada visualmente
+  const isDisabled = isRedeemed && challenge.redeemable === 'once';
 
   return (
     <TouchableOpacity
       style={[
         styles.card,
         { borderColor: getStatusColor() },
-        !canStillRedeem && styles.cardDisabled,
+        isDisabled && styles.cardDisabled,
       ]}
       onPress={handlePress}
       activeOpacity={0.7}
-      disabled={!canRedeem && !isCompleted}
+      disabled={isDisabled}
     >
       <View style={styles.iconContainer}>
         <Text style={styles.icon}>{challenge.icon}</Text>
-        {canRedeem && canStillRedeem && (
+        {canRedeem && (
           <View style={styles.availableBadge}>
             <Text style={styles.availableText}>!</Text>
           </View>
@@ -101,6 +150,25 @@ export const LifeChallengeCard: React.FC<LifeChallengeCardProps> = ({
         </Text>
 
         <View style={styles.footer}>
+          {/* Badge de tipo: Una vez o Ilimitado */}
+          <View style={[
+            styles.typeBadge,
+            challenge.redeemable === 'once' ? styles.typeBadgeOnce : styles.typeBadgeUnlimited
+          ]}>
+            <Ionicons
+              name={challenge.redeemable === 'once' ? 'alert-circle' : 'infinite'}
+              size={12}
+              color={challenge.redeemable === 'once' ? '#E67E22' : '#9B59B6'}
+            />
+            <Text style={[
+              styles.typeBadgeText,
+              { color: challenge.redeemable === 'once' ? '#E67E22' : '#9B59B6' }
+            ]}>
+              {challenge.redeemable === 'once' ? '1 vez' : 'Ilimitado'}
+            </Text>
+          </View>
+
+          {/* Recompensa */}
           <View style={styles.rewardContainer}>
             <View style={styles.rewardContent}>
               <Ionicons name="heart" size={16} color="#E74C3C" />
@@ -108,12 +176,13 @@ export const LifeChallengeCard: React.FC<LifeChallengeCardProps> = ({
             </View>
           </View>
 
+          {/* Estado */}
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor() }]}>
             <Text style={styles.statusText}>{getStatusText()}</Text>
           </View>
         </View>
 
-        {challenge.redeemable === 'once' && isCompleted && (
+        {isRedeemed && challenge.redeemable === 'once' && (
           <View style={styles.onceCompletedBanner}>
             <View style={styles.onceCompletedContent}>
               <Ionicons name="checkmark-circle" size={16} color="#27AE60" />
@@ -133,8 +202,6 @@ const baseStyles = {
     borderWidth: 2,
     padding: 12,
     marginBottom: 12,
-    marginHorizontal: 4,
-    width: '31%', // Para 3 columnas con espaciado
     minHeight: 200,
     shadowColor: '#000',
     shadowOffset: {
@@ -192,6 +259,25 @@ const baseStyles = {
   footer: {
     flexDirection: 'column',
     gap: 6,
+  },
+  typeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 4,
+  },
+  typeBadgeOnce: {
+    backgroundColor: '#FEF3E2',
+  },
+  typeBadgeUnlimited: {
+    backgroundColor: '#F3E8FF',
+  },
+  typeBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
   },
   rewardContainer: {
     alignSelf: 'center',
